@@ -1,0 +1,164 @@
+//! MCP 工具清单与分发。
+//!
+//! 单一来源是仓库根部的 shared/mcp-tools.json：
+//! 工具名/描述/参数 schema/动作路由（action、query）都从这里读取，
+//! TS 侧（src/frontend/core/types.ts）同源导入。新增工具只需改清单 + 补 dispatcher case。
+
+use std::sync::OnceLock;
+use std::time::Instant;
+
+use serde_json::{json, Value};
+
+use log::{error, info};
+
+use super::AppState;
+
+#[derive(serde::Deserialize)]
+struct ToolDef {
+    name: String,
+    description: String,
+    /// JSON 键为 inputSchema（JSON Schema 惯例），这里仅以 serde rename 对齐。
+    #[serde(rename = "inputSchema")]
+    input_schema: Value,
+    /// 前端动作名（MascotAction），目前与 name 相同，独立字段以便将来演化。
+    action: String,
+    /// true = 需要前端在 5s 内回传结果（查询型，或需回报执行结果的动作型）；false = 发射即返回。
+    query: bool,
+}
+
+static MANIFEST: OnceLock<Vec<ToolDef>> = OnceLock::new();
+
+/// 加载并缓存工具清单。
+/// 清单经 `include_str!` 编译期嵌入：解析失败属于构建缺陷，
+/// 启动期 fail-fast 优于静默返回空清单（否则所有工具调用都会报「未知工具」）。
+#[allow(clippy::expect_used)] // 启动期 fail-fast 的受控例外，理由见上方文档注释
+fn manifest() -> &'static [ToolDef] {
+    MANIFEST.get_or_init(|| {
+        serde_json::from_str(include_str!("../../../../shared/mcp-tools.json"))
+            .expect("shared/mcp-tools.json 不是合法工具清单")
+    })
+}
+
+/// tools/list 响应中的工具数组。
+/// 只投影协议允许的三个字段——action/query 是内部路由信息，绝不能泄漏进协议响应。
+pub(super) fn list() -> Value {
+    json!(manifest()
+        .iter()
+        .map(|t| json!({
+            "name": t.name,
+            "description": t.description,
+            "inputSchema": t.input_schema,
+        }))
+        .collect::<Vec<_>>())
+}
+
+/// 处理 tools/call：按清单查路由，分发到看板娘动作或查询（响应成型与历史行为一致）。
+pub(super) async fn call_tool(state: AppState, params: Value, id: Option<Value>) -> String {
+    let name = params.get("name").and_then(|v| v.as_str()).unwrap_or("");
+    let args = params.get("arguments").cloned().unwrap_or(Value::Null);
+
+    let Some(tool) = manifest().iter().find(|t| t.name == name) else {
+        error!("[mcp] tools/call 失败 tool={} error=未知工具", name);
+        return super::error_resp(id, -32602, &format!("未知工具: {}", name));
+    };
+
+    let started = Instant::now();
+
+    let call_result: Value = if tool.query {
+        match state.dispatch(&tool.action, args, true).await {
+            Ok(val) => {
+                // 前端失败信封 {ok:false,...} → 标记为工具错误；成功载荷无 ok 字段不受影响
+                let is_error = val.get("ok").and_then(|v| v.as_bool()) == Some(false);
+                log_call(
+                    name,
+                    started.elapsed(),
+                    is_error.then_some("前端返回失败信封"),
+                );
+                tool_result(
+                    serde_json::to_string_pretty(&val).unwrap_or_default(),
+                    is_error,
+                )
+            }
+            Err(e) => {
+                log_call(name, started.elapsed(), Some(&e.to_string()));
+                tool_result(format!("查询失败: {}", e), true)
+            }
+        }
+    } else {
+        match state.dispatch(&tool.action, args, false).await {
+            Ok(_) => {
+                log_call(name, started.elapsed(), None);
+                tool_result(format!("已触发动作: {}", name), false)
+            }
+            Err(e) => {
+                log_call(name, started.elapsed(), Some(&e.to_string()));
+                tool_result(format!("执行失败: {}", e), true)
+            }
+        }
+    };
+
+    super::response(id, call_result)
+}
+
+/// 组装 tools/call 结果信封（content[0].text + isError；协议形状在此收口）。
+fn tool_result(text: String, is_error: bool) -> Value {
+    json!({
+        "content": [{ "type": "text", "text": text }],
+        "isError": is_error
+    })
+}
+
+/// 记录 tools/call 结果：工具名、成功/失败、耗时（毫秒）与失败原因。
+/// 查询超时也走失败分支（错误文本含「前端响应超时（5s）」）。
+fn log_call(name: &str, elapsed: std::time::Duration, error: Option<&str>) {
+    match error {
+        Some(e) => error!(
+            "[mcp] tools/call 失败 tool={} 耗时={}ms error={}",
+            name,
+            elapsed.as_millis(),
+            e
+        ),
+        None => info!(
+            "[mcp] tools/call 完成 tool={} 耗时={}ms",
+            name,
+            elapsed.as_millis()
+        ),
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)] // 测试代码：断言失败即用例失败，JSON 索引为惯用写法
+mod tests {
+    use super::*;
+
+    #[test]
+    fn manifest_loads_all_tools() {
+        assert!(!manifest().is_empty());
+    }
+
+    #[test]
+    fn list_projects_only_protocol_fields() {
+        let tools = list();
+        let arr = tools.as_array().unwrap();
+        assert_eq!(arr.len(), manifest().len());
+        for t in arr {
+            // 只暴露协议三个字段：action / query 是内部路由信息，不得泄漏。
+            assert!(t.get("name").is_some());
+            assert!(t.get("description").is_some());
+            assert!(t.get("inputSchema").is_some());
+            assert!(t.get("action").is_none());
+            assert!(t.get("query").is_none());
+        }
+    }
+
+    #[test]
+    fn manifest_tool_names_unique() {
+        let names: Vec<&str> = manifest().iter().map(|t| t.name.as_str()).collect();
+        for (i, name) in names.iter().enumerate() {
+            assert!(
+                !names.iter().skip(i + 1).any(|n| n == name),
+                "工具名重复: {name}"
+            );
+        }
+    }
+}

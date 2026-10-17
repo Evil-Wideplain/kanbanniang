@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>看板娘</title>
+  </head>
+  <body>
+    <!-- 看板娘画布（Live2D 或降级动画都绘制在这里）；无边框窗口，整块画布可拖动 -->
+    <canvas id="stage" data-tauri-drag-region></canvas>
+    <!-- 说话气泡（DOM 层，便于排版与换行） -->
+    <div id="bubble" class="bubble hidden"></div>
+    <script type="module" src="/main.ts"></script>
+  </body>
+</html>

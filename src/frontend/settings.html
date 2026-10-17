@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>看板娘 · 设置</title>
+  </head>
+  <body>
+    <main class="settings">
+      <div class="titlebar" data-tauri-drag-region></div>
+      <header class="page-head">
+        <h1><span class="hl">设置</span> · 看板娘</h1>
+        <p class="sub">把桌面伴侣调成你喜欢的样子</p>
+      </header>
+      <div class="win-btns">
+        <button id="win-min" class="win-btn" type="button" aria-label="最小化">−</button>
+        <button id="win-close" class="win-btn close" type="button" aria-label="关闭">×</button>
+      </div>
+
+      <form id="settings-form">
+        <section class="card">
+          <span class="tape"></span>
+          <span class="tag">MCP</span>
+          <div class="row">
+            <span class="lbl">启用 MCP 服务</span>
+            <button
+              id="mcp-enabled"
+              type="button"
+              class="sw"
+              role="switch"
+              aria-checked="true"
+            >
+              <i></i>
+            </button>
+          </div>
+          <div id="mcp-detail">
+            <div class="row">
+              <label class="lbl" for="mcp-port">服务端口</label>
+              <input id="mcp-port" type="number" min="1" max="65535" step="1" required />
+            </div>
+            <div class="row">
+              <span class="lbl">服务地址</span>
+              <span class="mono" id="mcp-address">127.0.0.1:7432/mcp/sse</span>
+            </div>
+            <div class="row">
+              <span class="lbl">运行状态</span>
+              <span class="pill" id="mcp-status"><i></i><span>运行中</span></span>
+            </div>
+          </div>
+        </section>
+
+        <section class="card mint">
+          <span class="tape"></span>
+          <span class="tag">看板娘</span>
+          <div class="row">
+            <span class="lbl">选择模型</span>
+            <div class="chips" id="model-options"></div>
+          </div>
+          <div class="row">
+            <span class="lbl">视线跟随鼠标</span>
+            <button
+              id="gaze-follow"
+              type="button"
+              class="sw"
+              role="switch"
+              aria-checked="true"
+            >
+              <i></i>
+            </button>
+          </div>
+        </section>
+
+        <section class="card coral">
+          <span class="tape"></span>
+          <span class="tag">通用</span>
+          <div class="row">
+            <span class="lbl">窗口置顶</span>
+            <button
+              id="always-on-top"
+              type="button"
+              class="sw"
+              role="switch"
+              aria-checked="true"
+            >
+              <i></i>
+            </button>
+          </div>
+          <div class="row">
+            <span class="lbl">不透明度</span>
+            <div class="range">
+              <input id="opacity" type="range" min="1" max="100" step="1" value="100" />
+              <span class="mono" id="opacity-value">100%</span>
+            </div>
+          </div>
+          <div class="row">
+            <span class="lbl">开机自启</span>
+            <button id="autostart" type="button" class="sw" role="switch" aria-checked="false">
+              <i></i>
+            </button>
+          </div>
+        </section>
+
+        <footer class="actions">
+          <button id="save" type="submit" class="save">保存</button>
+          <button id="reset" type="button" class="ghost">重置</button>
+          <span id="status" class="msg" role="status"></span>
+        </footer>
+      </form>
+    </main>
+    <script type="module" src="/settings.ts"></script>
+  </body>
+</html>

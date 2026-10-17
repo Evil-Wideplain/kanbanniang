@@ -1,0 +1,14 @@
+# 依赖与构建产物
+node_modules/
+dist/
+target/
+design/*
+
+# 本地模型文件（体积大、含许可，勿提交；目录整体忽略，models/README.md 仍跟踪）
+/models/*/
+
+# 系统/编辑器
+.DS_Store
+*.log
+.idea/
+.vscode/

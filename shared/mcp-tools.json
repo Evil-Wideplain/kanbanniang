@@ -1,0 +1,100 @@
+[
+  {
+    "name": "play_motion",
+    "description": "播放一个动作。名字可用 list_motions 查询真实组名，或语义名（idle / speak 等，按档案别名映射，忽略大小写与下划线）；未命中时自动回退随机点触动作。返回 {applied, fallback, index}：applied 为实际播放的组名，fallback=true 表示走了回退。",
+    "action": "play_motion",
+    "query": true,
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "motion": { "type": "string", "description": "动作组名" },
+        "index": { "type": "integer", "description": "动作序号（可选）" }
+      },
+      "required": ["motion"]
+    }
+  },
+  {
+    "name": "set_expression",
+    "description": "设置表情。名字可用 list_expressions 查询真实表情名，或语义名（neutral / happy 等，按档案别名映射，忽略大小写与下划线）；未命中时回退为默认表情。返回 {applied, fallback}：applied 为实际生效的表情名。",
+    "action": "set_expression",
+    "query": true,
+    "inputSchema": {
+      "type": "object",
+      "properties": { "expression": { "type": "string", "description": "表情名" } },
+      "required": ["expression"]
+    }
+  },
+  {
+    "name": "speak",
+    "description": "让看板娘说话：显示气泡并做口型/表情反馈。",
+    "action": "speak",
+    "query": false,
+    "inputSchema": {
+      "type": "object",
+      "properties": { "text": { "type": "string", "description": "要说的文字" } },
+      "required": ["text"]
+    }
+  },
+  {
+    "name": "move",
+    "description": "移动看板娘窗口内位置（归一化坐标 x,y ∈ [0,1]）。",
+    "action": "move",
+    "query": false,
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "x": { "type": "number", "description": "横向 0~1" },
+        "y": { "type": "number", "description": "纵向 0~1" }
+      },
+      "required": ["x", "y"]
+    }
+  },
+  {
+    "name": "set_idle",
+    "description": "让看板娘回到待机状态（清除表情/动作）。",
+    "action": "set_idle",
+    "query": false,
+    "inputSchema": { "type": "object", "properties": {} }
+  },
+  {
+    "name": "list_motions",
+    "description": "列出当前模型可用的动作组名。",
+    "action": "list_motions",
+    "query": true,
+    "inputSchema": { "type": "object", "properties": {} }
+  },
+  {
+    "name": "list_expressions",
+    "description": "列出当前模型可用的表情名。",
+    "action": "list_expressions",
+    "query": true,
+    "inputSchema": { "type": "object", "properties": {} }
+  },
+  {
+    "name": "get_status",
+    "description": "获取看板娘当前状态（模式/模型/表情/位置/是否在说话）。",
+    "action": "get_status",
+    "query": true,
+    "inputSchema": { "type": "object", "properties": {} }
+  },
+  {
+    "name": "set_model",
+    "description": "运行时切换看板娘模型（Live2D 模型间热切换，或切到降级模式）。返回 {ok:true,model,mode,modelFile} 或 {ok:false,error}；失败时原模型保持不变。可用 id 见 list_models。",
+    "action": "set_model",
+    "query": true,
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "model": { "type": "string", "description": "模型档案 id，如 \"haru\" / \"natori\" / \"fallback\"" }
+      },
+      "required": ["model"]
+    }
+  },
+  {
+    "name": "list_models",
+    "description": "列出可用的看板娘模型档案：id、名称、渲染模式（live2d/fallback）、主模型文件、是否默认、当前使用中。",
+    "action": "list_models",
+    "query": true,
+    "inputSchema": { "type": "object", "properties": {} }
+  }
+]

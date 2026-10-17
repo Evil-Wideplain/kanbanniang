@@ -1,0 +1,29 @@
+{
+  "name": "kanban-mascot",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Tauri + Live2D 桌面看板娘，内置 MCP 服务，可被 Agent 调用执行动作",
+  "scripts": {
+    "gen:models": "node scripts/gen-models.mjs",
+    "predev": "node scripts/gen-models.mjs",
+    "dev": "vite",
+    "prebuild": "node scripts/gen-models.mjs",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.1.1",
+    "@tauri-apps/plugin-log": "^2.0.0",
+    "pixi-live2d-display": "^0.4.0",
+    "pixi.js": "^6.5.10"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.1.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10"
+  }
+}

@@ -1,0 +1,67 @@
+[package]
+name = "kanban-mascot"
+version = "0.1.0"
+description = "Tauri + Live2D 桌面看板娘，内置 MCP 服务"
+authors = ["you"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "kanban_mascot_lib"
+# 桌面构建只需 rlib（供 bin 链接）。cdylib 在 Windows 下自动导出 10 万+ 符号，
+# 超过 PE 格式 65535 上限导致链接失败；如将来做移动端再按平台加回。
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-log = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+axum = "0.7"
+futures = "0.3"
+uuid = { version = "1", features = ["v4"] }
+anyhow = "1"
+log = "0.4"
+time = { version = "0.3", features = ["macros", "formatting"] }
+tauri-plugin-autostart = "2"
+
+# macOS 托盘模板图标需在运行期解码 PNG（Image::from_bytes）；
+# 仅 macOS 路径使用，按目标平台收窄以免拖累 Windows 构建。
+[target.'cfg(target_os = "macos")'.dependencies]
+tauri = { version = "2", features = ["image-png"] }
+
+# ---- AI 代码健壮性静态检查（门禁命令：cargo clippy --all-targets -- -D warnings）----
+# 本表是 lint 配置的唯一来源；调整条目时同步更新 src/tauri/AGENTS.md 的 lint 清单表。
+[lints.rust]
+# 全仓禁止 unsafe（如未来确需：降级为 deny + 局部 #[allow] + 中文注释说明理由）
+unsafe_code = "forbid"
+# #[must_use] 返回值（尤其 Result）被静默丢弃时直接编译失败
+unused_must_use = "deny"
+
+[lints.clippy]
+# 基线组（正确性/可疑代码/性能）；priority=-1 允许下方具体 lint 覆盖组的级别
+all = { level = "warn", priority = -1 }
+# 调试宏残留零容忍
+dbg_macro = "deny"
+# 占位实现残留（AI 生成代码高频问题）
+todo = "warn"
+unimplemented = "warn"
+# 运行期 panic 家族：必须走错误路径；仅启动期 fail-fast 可受控例外（#[allow] + 注释）
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+# 越界 panic：切片索引与字符串字节切片
+indexing_slicing = "warn"
+string_slice = "warn"
+# GUI 应用 stdout 不可见：日志一律走 log 门面（tauri-plugin-log 双写 stderr + 文件）
+print_stdout = "warn"
+
+[profile.release]
+panic = "abort"
+strip = true
+opt-level = "s"
+lto = true

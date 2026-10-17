@@ -1,0 +1,3 @@
+# Rust 格式化配置（仅稳定选项，nightly-only 选项一律不用，保证与声明 MSRV 的工具链一致）
+# 校验：cargo fmt --check ；自动修复：cargo fmt
+max_width = 100
