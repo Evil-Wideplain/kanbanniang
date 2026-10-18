@@ -1,6 +1,6 @@
-import type { ActionOutcome, MascotController, MascotStatus } from "./types";
-import { speakDurationMs } from "./speech";
-import { norm } from "./normalize";
+import type { ActionOutcome, MascotController, MascotStatus } from "@/shared/domain/types";
+import { speakDurationMs } from "@/shared/domain/speech";
+import { norm } from "@/shared/domain/normalize";
 
 /**
  * 降级看板娘：纯 Canvas 2D 动画，无需 Live2D SDK 即可运行。

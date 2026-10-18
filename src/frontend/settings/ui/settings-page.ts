@@ -1,16 +1,16 @@
 /**
- * 设置页（表现层）：渲染 MCP 服务、看板娘模型与通用偏好，读写经 ipc/settings。
- * 模型选项来自档案注册表（新增模型只改 core/profiles.ts）；纯 DOM，无框架。
+ * 设置页（表现层）：渲染 MCP 服务、看板娘模型与通用偏好，读写经 shared/ipc/settings-client。
+ * 模型选项来自档案注册表（新增模型只改 shared/domain/profiles.ts）；纯 DOM，无框架。
  *
  * 交互策略（即时反馈）：
  * - 模型 / 置顶 / 视线跟随 / 自启 / 不透明度：交互后立刻保存并广播，主窗口即时生效；
  * - 端口：改动会重启 MCP 服务，需点「保存」，期间状态显示「重启中…」；
  * - 运行状态与地址来自后端真实运行态（get_runtime_status），非写死文本。
  */
-import { MODEL_PROFILES } from "../core/profiles";
-import { DEFAULT_SETTINGS, validateOpacity, validatePort } from "../core/settings";
-import { getRuntimeStatus, loadSettings, saveSettings } from "../ipc/settings";
-import type { MascotSettings } from "../core/types";
+import { MODEL_PROFILES } from "@/shared/domain/profiles";
+import { DEFAULT_SETTINGS, validateOpacity, validatePort } from "@/shared/domain/settings";
+import { getRuntimeStatus, loadSettings, saveSettings } from "@/shared/ipc/settings-client";
+import type { MascotSettings } from "@/shared/domain/types";
 
 /** 当前选中的模型 id（点击模型芯片时更新）。 */
 let selectedModelId: string = DEFAULT_SETTINGS.modelId;

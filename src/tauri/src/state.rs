@@ -5,7 +5,7 @@
 //! - 前端 → 后端：`spawn_result_listener()` 监听 `mascot:result`，
 //!   用 oneshot 通道唤醒等待中的查询（5s 超时）。
 //!
-//! 类型定义与前端 `src/frontend/core/types.ts` 成对镜像，改动必须两侧同步。
+//! 类型定义与前端 `src/frontend/shared/domain/types.ts` 成对镜像，改动必须两侧同步。
 
 use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -16,7 +16,7 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter, Listener};
 use tokio::sync::{broadcast, oneshot};
 
-/// Tauri 事件通道名契约（与前端 `core/types.ts` 的 `CHANNELS` 成对维护）。
+/// Tauri 事件通道名契约（与前端 `shared/domain/types.ts` 的 `CHANNELS` 成对维护）。
 pub mod channels {
     /// 后端 → 前端：下发 MCP 动作指令。
     pub const ACTION: &str = "mascot:action";
@@ -26,7 +26,7 @@ pub mod channels {
     pub const SETTINGS: &str = "mascot:settings";
 }
 
-/// 后端转发给前端的指令（与 src/frontend/core/types.ts 的 MascotCommand 对应）。
+/// 后端转发给前端的指令（与 src/frontend/shared/domain/types.ts 的 MascotCommand 对应）。
 #[derive(Serialize, Clone)]
 pub struct MascotCommand {
     /// 本次指令唯一 id；查询型指令回传结果时必须原样带回。
@@ -37,7 +37,7 @@ pub struct MascotCommand {
     pub params: Value,
 }
 
-/// 前端回传的查询结果（与 src/frontend/core/types.ts 的 MascotResult 对应）。
+/// 前端回传的查询结果（与 src/frontend/shared/domain/types.ts 的 MascotResult 对应）。
 #[derive(serde::Deserialize)]
 pub struct FrontendResult {
     /// 对应下发指令的 id。

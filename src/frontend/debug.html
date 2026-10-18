@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>看板娘 · MCP 调试</title>
+  </head>
+  <body>
+    <main class="debug">
+      <!-- 无系统边框：自绘标题栏（拖动条 + 最小化/关闭按钮，与设置窗口同构） -->
+      <div class="titlebar" data-tauri-drag-region></div>
+      <header class="page-head">
+        <h1><span class="hl">MCP</span> 调试 · 看板娘</h1>
+        <p class="sub">左侧选工具，右上填参数调用，右下看日志（仅开发构建）</p>
+      </header>
+      <div class="win-btns">
+        <button id="win-min" class="win-btn" type="button" aria-label="最小化">−</button>
+        <button id="win-close" class="win-btn close" type="button" aria-label="关闭">×</button>
+      </div>
+
+      <div class="layout">
+        <!-- 左：工具清单（点击切换右侧参数卡） -->
+        <aside class="card side">
+          <span class="tape"></span>
+          <span class="tag">工具</span>
+          <nav id="tools" class="tool-list" aria-label="工具列表"></nav>
+          <footer class="side-foot">
+            <button id="call-all" type="button" class="save">依次调用全部</button>
+          </footer>
+        </aside>
+
+        <!-- 右上：当前工具参数；右下：调用日志 -->
+        <section class="right">
+          <section id="params" class="card params" aria-label="参数与调用"></section>
+          <section class="card mint logbox">
+            <span class="tape"></span>
+            <span class="tag">日志</span>
+            <div class="row">
+              <span class="lbl">调用日志</span>
+              <button id="clear-log" type="button" class="ghost">清空</button>
+            </div>
+            <div id="log" class="log-body" aria-label="调用日志条目"></div>
+          </section>
+        </section>
+      </div>
+    </main>
+    <script type="module" src="/app/debug.ts"></script>
+  </body>
+</html>

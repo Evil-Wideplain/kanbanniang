@@ -1,7 +1,7 @@
-import type { ActionOutcome, MascotController, MascotStatus } from "../types";
-import type { ModelConfig, ModelProfile } from "../profiles";
-import { norm } from "../normalize";
-import { startCursorTracking } from "../../ipc/cursor";
+import type { ActionOutcome, MascotController, MascotStatus } from "@/shared/domain/types";
+import type { ModelConfig, ModelProfile } from "@/shared/domain/profiles";
+import { norm } from "@/shared/domain/normalize";
+import { startCursorTracking } from "@/shared/ipc/cursor";
 import cubismCoreUrl from "./live2dcubismcore.min.js?url";
 
 /**
@@ -20,7 +20,7 @@ async function loadCubismCore(): Promise<void> {
     const s = document.createElement("script");
     s.src = cubismCoreUrl;
     s.onload = () => resolve();
-    s.onerror = () => reject(new Error("无法加载 Cubism Core 运行时资源（src/frontend/core/live2d/live2dcubismcore.min.js）"));
+    s.onerror = () => reject(new Error("无法加载 Cubism Core 运行时资源（src/frontend/mascot/render/live2d/live2dcubismcore.min.js）"));
     document.head.appendChild(s);
   });
 }

@@ -1,5 +1,5 @@
 /** 说话气泡（表现层）：show 后按时长自动隐藏，重复 show 会重置计时。 */
-import { speakDurationMs } from "../core/speech";
+import { speakDurationMs } from "@/shared/domain/speech";
 
 export interface Bubble {
   /** 显示文本，并在 speakDurationMs 到期后自动隐藏。 */

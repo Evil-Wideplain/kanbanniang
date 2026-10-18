@@ -3,9 +3,9 @@
  * 以及后端广播的设置变更事件 `mascot:settings`。
  * 纯传输，不理解设置语义；非 Tauri 环境（浏览器调试）读取回退默认值，仅告警。
  */
-import { DEFAULT_SETTINGS } from "../core/settings";
-import { CHANNELS } from "../core/types";
-import type { MascotSettings, RuntimeStatus } from "../core/types";
+import { DEFAULT_SETTINGS } from "@/shared/domain/settings";
+import { CHANNELS } from "@/shared/domain/types";
+import type { MascotSettings, RuntimeStatus } from "@/shared/domain/types";
 
 /**
  * 读取设置；非 Tauri 环境或命令不可用时回退默认值（不阻断界面渲染）。

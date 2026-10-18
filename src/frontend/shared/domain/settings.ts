@@ -1,6 +1,6 @@
 /**
  * 应用设置的领域规则：默认值与校验（与 Rust 侧 config.rs 对齐）。
- * 设置的传输由 ipc/settings.ts 负责，本模块不触碰 DOM / Tauri。
+ * 设置的传输由 shared/ipc/settings-client.ts 负责，本模块不触碰 DOM / Tauri。
  */
 import { DEFAULT_MODEL_ID } from "./profiles";
 import type { MascotSettings } from "./types";

@@ -6,8 +6,13 @@ import { defineConfig } from "vite";
 export default defineConfig({
   // 入口 HTML 在 src/frontend/ 下，Vite 以 src/frontend 为工程根
   root: "src/frontend",
+  // 路径别名：`@/*` → `src/frontend/*`（与 tsconfig paths 一致），避免 `../../../` 深相路径；
+  // 键用 `@` 不会误匹配 `@tauri-apps/*`（别名按 `@/` 前缀匹配）。
+  resolve: {
+    alias: { "@": fileURLToPath(new URL("./src/frontend", import.meta.url)) },
+  },
   clearScreen: false,
-  // 静态资源根：models/（仅模型目录；Cubism Core 在 src/frontend/core/live2d/ 内随源码打包），其内容映射到站点根路径，
+  // 静态资源根：models/（仅模型目录；Cubism Core 在 src/frontend/mascot/render/live2d/ 内随源码打包），其内容映射到站点根路径，
   // 如 models/Haru/... → /Haru/...
   publicDir: "../../models",
   server: {
@@ -20,11 +25,12 @@ export default defineConfig({
     target: "es2020",
     outDir: "../../dist",
     emptyOutDir: true,
-    // 多入口：看板娘主窗口（index.html）与设置窗口（settings.html）
+    // 多入口：看板娘主窗口（index.html）、设置窗口（settings.html）与调试面板（debug.html，仅开发构建创建）
     rollupOptions: {
       input: {
         main: fileURLToPath(new URL("./src/frontend/index.html", import.meta.url)),
         settings: fileURLToPath(new URL("./src/frontend/settings.html", import.meta.url)),
+        debug: fileURLToPath(new URL("./src/frontend/debug.html", import.meta.url)),
       },
     },
   },

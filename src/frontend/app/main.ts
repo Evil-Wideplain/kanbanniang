@@ -1,14 +1,15 @@
 /**
- * 前端组合根（表现层）：装配气泡、模型管理器与 Tauri 事件通道。
- * 只做接线，不写业务分支（动作语义见 core/dispatcher.ts）。
+ * 主窗口组合根（表现层）：装配气泡、模型管理器与 Tauri 事件通道。
+ * 只做接线，不写业务分支（动作语义见 mascot/application/dispatcher.ts）。
  */
-import "./style.css";
-import { handleCommand, type CommandCtx } from "./core/dispatcher";
-import { createModelManager } from "./core/model-switch";
-import { createBubble } from "./ui/bubble";
-import { connectTauriEvents } from "./ipc/events";
-import { installLogForwarding } from "./ipc/log-forward";
-import { loadSettings, onSettingsChanged } from "./ipc/settings";
+import "../styles/main.css";
+import { handleCommand, type CommandCtx } from "@/mascot/application/dispatcher";
+import { createModelManager } from "@/mascot/application/model-switch";
+import { createBubble } from "@/mascot/ui/bubble";
+import { connectTauriEvents } from "@/shared/ipc/events";
+import { installLogForwarding } from "@/shared/ipc/log-forward";
+import { loadSettings, onSettingsChanged } from "@/shared/ipc/settings-client";
+import { moveWindow } from "@/shared/ipc/window";
 
 /**
  * 应用看板娘不透明度：写入 CSS 变量 `--mascot-opacity`（作用于 #stage 画布）。
@@ -37,6 +38,7 @@ async function bootstrap() {
     setModel: (id) => mgr.setModel(id),
     currentModelId: () => mgr.currentModelId(),
     showBubble: (text) => bubble.show(text),
+    moveWindow: (x, y) => moveWindow(x, y),
   };
 
   // 4) 订阅设置变更：保存后实时应用不透明度与视线跟随（其它设置由后端作用于窗口/系统）

@@ -37,14 +37,28 @@
   },
   {
     "name": "move",
-    "description": "移动看板娘窗口内位置（归一化坐标 x,y ∈ [0,1]）。",
+    "description": "把整个看板娘窗口平滑移动到屏幕工作区的归一化坐标（x,y ∈ [0,1]，相对当前显示器的可用工作区即去掉任务栏的区域，窗口保证完整可见，约 0.6s 滑到位）。返回 {x, y, physicalX, physicalY, clamped, superseded}：x/y 为最终归一化坐标，physicalX/physicalY 为窗口外框左上角物理像素，clamped 表示输入超出 0~1 被截断，superseded 表示被更新的移动请求打断。",
     "action": "move",
+    "query": true,
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "x": { "type": "number", "description": "工作区横向 0~1（0=最左，1=最右）" },
+        "y": { "type": "number", "description": "工作区纵向 0~1（0=最上，1=最下）" }
+      },
+      "required": ["x", "y"]
+    }
+  },
+  {
+    "name": "move_in_window",
+    "description": "调整看板娘在窗口内的站位（归一化锚点坐标 x,y ∈ [0,1]，只移动窗口内形象，不移动窗口本身）。",
+    "action": "move_in_window",
     "query": false,
     "inputSchema": {
       "type": "object",
       "properties": {
-        "x": { "type": "number", "description": "横向 0~1" },
-        "y": { "type": "number", "description": "纵向 0~1" }
+        "x": { "type": "number", "description": "窗口内横向 0~1" },
+        "y": { "type": "number", "description": "窗口内纵向 0~1" }
       },
       "required": ["x", "y"]
     }

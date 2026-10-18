@@ -23,10 +23,12 @@ Agent（Claude Desktop 等） ──SSE / JSON-RPC──▶ Rust: axum MCP 服�
 
 | 层 | 前端位置（`src/frontend/`） | Rust 位置（`src/tauri/`） | 职责 | 禁止 |
 |----|------|------|------|------|
-| 领域层 Domain | `core/types.ts`（契约/值对象）、`core/profiles.ts`（模型档案）、`core/speech.ts`（领域规则） | —（渲染领域归前端所有） | 契约、类型、业务规则 | 依赖 DOM / Tauri / pixi / 渲染库 |
-| 应用层 Application | `core/dispatcher.ts`（指令用例分发）、`core/model-switch.ts`（模型生命周期，含热切换与回滚） | — | 用例编排 | 直接操作 DOM 细节；绕过领域接口 |
-| 基础设施层 Infrastructure | `core/live2d/`、`core/fallback.ts`、`ipc/events.ts` | `mcp/`、`state.rs` | 实现领域端口（`MascotController` 接口在领域层）；传输与状态 | 在适配器里写业务规则 |
-| 表现层 Presentation | `ui/bubble.ts`（DOM 气泡）、`main.ts`（组合根） | `lib.rs`（组合根） | 渲染与装配 | 在组合根写业务逻辑（只做接线） |
+| 领域层 Domain | `shared/domain/`：`types.ts`（契约/值对象）、`profiles.ts`（模型档案）、`speech.ts` / `normalize.ts` / `settings.ts`（领域规则） | —（渲染领域归前端所有） | 契约、类型、业务规则 | 依赖 DOM / Tauri / pixi / 渲染库 |
+| 应用层 Application | `mascot/application/dispatcher.ts`（指令用例分发）、`mascot/application/model-switch.ts`（模型生命周期，含热切换与回滚） | — | 用例编排 | 直接操作 DOM 细节；绕过领域接口 |
+| 基础设施层 Infrastructure | `mascot/render/live2d/`、`mascot/render/fallback.ts`、`shared/ipc/events.ts` | `mcp/`、`state.rs` | 实现领域端口（`MascotController` 接口在领域层）；传输与状态 | 在适配器里写业务规则 |
+| 表现层 Presentation | `mascot/ui/bubble.ts`（DOM 气泡）、`settings/ui/settings-page.ts`（设置页）、`debug/panel.ts`（调试面板）、`app/`（三窗口组合根） | `lib.rs`（组合根） | 渲染与装配 | 在组合根写业务逻辑（只做接线） |
+
+前端按「功能分片（feature slice）+ 共享内核」组织：`shared/domain`（契约/规则，被所有层依赖）、`shared/ipc`（Tauri 桥）为跨功能共享；`mascot` / `settings` / `debug` 三个功能域自带分层子目录，**功能域之间禁止互相 import**；`app/*` 为各 WebView 窗口的组合根。
 
 依赖方向单向：表现 → 应用 → 领域；基础设施向领域契约收敛。避免循环依赖；跨层数据一律走类型化契约（`MascotCommand` / `MascotResult` / `ActionOutcome` 等），禁止裸 `any` / 无结构字符串传递。
 
@@ -36,19 +38,19 @@ Rust 后端对应「基础设施 + 接口层」：`lib.rs` 只做组装；`mcp/m
 
 | 模式 | 落点 | 说明 |
 |------|------|------|
-| 端口-适配器（依赖倒置） | 接口 `MascotController`（领域层）← 实现 `core/live2d/`、`core/fallback.ts` | 业务用例只依赖接口，渲染实现可整体替换（Live2D ↔ 降级） |
-| 组合根 | `main.ts`、`lib.rs` | 只做装配与接线，不写业务分支 |
-| 用例编排 + 穷尽性检查 | `core/dispatcher.ts` | `switch` 穷尽 `MascotCommand`（`const _exhaustive: never`），漏写 case 编译失败；禁止 `default` 兜底 |
-| 先建后销（失败天然回滚） | `core/model-switch.ts` | 模型热切换先在游离画布建好新控制器才提交销毁旧的；禁止先销毁再重建 |
-| 事件桥（异步查询） | `state.rs` ↔ `ipc/events.ts` | 查询型工具经 `mascot:action` 下发、`mascot:result` 回传（oneshot，5s 超时；超时清理 `pending` 表防泄漏） |
+| 端口-适配器（依赖倒置） | 接口 `MascotController`（领域层）← 实现 `mascot/render/live2d/`、`mascot/render/fallback.ts` | 业务用例只依赖接口，渲染实现可整体替换（Live2D ↔ 降级） |
+| 组合根 | `app/main.ts`、`app/settings.ts`、`app/debug.ts`、`lib.rs` | 只做装配与接线，不写业务分支 |
+| 用例编排 + 穷尽性检查 | `mascot/application/dispatcher.ts` | `switch` 穷尽 `MascotCommand`（`const _exhaustive: never`），漏写 case 编译失败；禁止 `default` 兜底 |
+| 先建后销（失败天然回滚） | `mascot/application/model-switch.ts` | 模型热切换先在游离画布建好新控制器才提交销毁旧的；禁止先销毁再重建 |
+| 事件桥（异步查询） | `state.rs` ↔ `shared/ipc/events.ts` | 查询型工具经 `mascot:action` 下发、`mascot:result` 回传（oneshot，5s 超时；超时清理 `pending` 表防泄漏） |
 | 锁中毒自愈 | `state.rs` | `PoisonError::into_inner` 恢复内部数据而非级联 panic；锁访问统一走访问器 |
 
 ## 契约同步（硬性）
 
 1. 工具契约唯一来源 `src/mcp/tools.json`，新增工具的顺序：
    1. 清单中登记（name / description / inputSchema / action / query）
-   2. `src/frontend/core/types.ts` 的 `MASCOT_ACTIONS` 补上动作名（运行时互校，不一致会告警）
-   3. 前端 `dispatcher.ts` 补 case（穷尽性检查会强制编译失败，防止遗漏）
+   2. `src/frontend/shared/domain/types.ts` 的 `MASCOT_ACTIONS` 补上动作名（运行时互校，不一致会告警）
+   3. 前端 `mascot/application/dispatcher.ts` 补 case（穷尽性检查会强制编译失败，防止遗漏）
    4. 实现对应控制器能力（Live2D 与降级两个实现都要覆盖）
 2. 事件契约成对维护：`types.ts` ↔ `state.rs`（`MascotCommand` / `MascotResult`），字段改动必须两侧同步；`#[serde(default)]` 等兼容标记不得随意移除。
 3. 事件通道名固定：`mascot:action`（后端 → 前端）、`mascot:result`（前端 → 后端）；查询型工具由清单 `query:true` 驱动，超时 5s。

@@ -11,8 +11,10 @@
 //! - `server`：服务生命周期（启动 / 停止 / 端口热重启）；
 //! - `sse`：SSE 与 POST 传输、会话治理；
 //! - `rpc`：JSON-RPC 方法路由与响应封套；
-//! - `tools`：工具清单与 `tools/call` 路由。
+//! - `tools`：工具清单与 `tools/call` 路由；
+//! - `debug`：应用内调试面板入口（复用完整 `tools/call` 协议封套）。
 
+mod debug;
 mod rpc;
 mod server;
 mod sse;
@@ -22,6 +24,7 @@ use std::sync::Arc;
 
 pub use server::{start, ServiceManager};
 
+pub(crate) use debug::debug_call;
 pub(crate) use rpc::{error_resp, response};
 
 use crate::state::AppStateInner;

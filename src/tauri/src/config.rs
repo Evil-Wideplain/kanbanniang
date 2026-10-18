@@ -1,7 +1,7 @@
 //! 应用设置持久化（基础设施层）。
 //!
 //! 设置以 JSON 存于应用配置目录（`settings.json`）：文件缺失或损坏一律回退默认值，
-//! 保证应用总能启动。字段采用 camelCase 序列化，与前端 `core/types.ts` 的
+//! 保证应用总能启动。字段采用 camelCase 序列化，与前端 `shared/domain/types.ts` 的
 //! `MascotSettings` 成对镜像，改动必须两侧同步。
 
 use std::path::PathBuf;

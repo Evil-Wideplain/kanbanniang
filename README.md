@@ -40,7 +40,7 @@
 ## 特性
 
 - ✅ 内置 MCP 服务（SSE），Agent 可即连即用
-- ✅ 10 个工具：动作 / 表情 / 说话 / 移动 / 待机 / 列动作 / 列表情 / 查状态 / **运行时换模型** / 列模型
+- ✅ 11 个工具：动作 / 表情 / 说话 / **窗口移动**（平滑滑行）/ 窗口内站位 / 待机 / 列动作 / 列表情 / 查状态 / **运行时换模型** / 列模型
 - ✅ **无需 Live2D SDK 也能跑**：未配置模型时自动用 Canvas 降级看板娘，MCP 工具链路立刻可验证
 - ✅ 真实 Live2D 是"即插即用"升级：放入模型 + 改一行配置即可
 - ✅ 透明无边框、置顶窗口，典型的桌面看板娘形态
@@ -116,7 +116,8 @@ node cmd/client/test.mjs
 | `play_motion` | `motion: string`, `index?: number` | 播动作（idle/tap_body/pinch_in/pinch_out/wave/shake…） |
 | `set_expression` | `expression: string` | 换表情（neutral/happy/angry/surprised/sad…） |
 | `speak` | `text: string` | 说话（显示气泡 + 反馈） |
-| `move` | `x: number`, `y: number` | 移动（归一化坐标 0~1） |
+| `move` | `x: number`, `y: number` | 平滑移动**整个窗口**到工作区坐标（归一化 0~1，约 0.6s；返回最终坐标） |
+| `move_in_window` | `x: number`, `y: number` | 调整看板娘在窗口内的站位（归一化 0~1，不动窗口） |
 | `set_idle` | — | 回到待机 |
 | `list_motions` | — | 列出可用动作组 |
 | `list_expressions` | — | 列出可用表情 |
@@ -132,7 +133,7 @@ node cmd/client/test.mjs
 
 ## 接入真实 Live2D
 
-见 [`models/README.md`](./models/README.md)：下载 Cubism SDK 或自备模型、放入 `models/`，并在 `src/frontend/core/profiles.ts` 的 `MODEL_PROFILES` 中登记模型档案（含缩放/锚点与语义别名），即可从降级模式切换到真实 Live2D；运行时用 MCP 工具 `set_model` 热切换模型。Cubism Core 运行时已内置于 `src/frontend/core/live2d/`，无需手动获取。
+见 [`models/README.md`](./models/README.md)：下载 Cubism SDK 或自备模型、放入 `models/`，并在 `src/frontend/shared/domain/profiles.ts` 的 `MODEL_PROFILES` 中登记模型档案（含缩放/锚点与语义别名），即可从降级模式切换到真实 Live2D；运行时用 MCP 工具 `set_model` 热切换模型。Cubism Core 运行时已内置于 `src/frontend/mascot/render/live2d/`，无需手动获取。
 
 ---
 
@@ -141,18 +142,19 @@ node cmd/client/test.mjs
 ```
 pet/
 ├─ src/                    项目源码根
-│  ├─ frontend/            前端（TS，Vite 入口 src/frontend/main.ts）
-│  │  ├─ main.ts           入口：装配气泡/模型管理器/事件接线（薄层）
-│  │  ├─ ui/bubble.ts      说话气泡（DOM）
-│  │  ├─ core/
-│  │  │  ├─ dispatcher.ts  MCP 指令 → 控制器方法 分发（含穷尽性检查）
-│  │  │  ├─ model-switch.ts 模型生命周期：初始化降级 + 运行时热切换（游离画布/回滚）
-│  │  │  ├─ live2d/         Live2D 控制器（index.ts）+ Cubism Core 运行时，pixi 动态加载
-│  │  │  ├─ fallback.ts    降级 Canvas 看板娘（无需 SDK）
-│  │  │  ├─ profiles.ts    模型档案（MODEL_PROFILES：配置+语义别名，默认 DEFAULT_MODEL_ID）
-│  │  │  ├─ speech.ts      说话时长（气泡与口型共用）
-│  │  │  └─ types.ts       前后端共用类型 + 动作表（与共享清单运行时互校）
-│  │  └─ ipc/events.ts     Tauri 事件通道（mascot:action 进 / mascot:result 出）
+│  ├─ frontend/            前端（TS + Vite；三窗口入口见 app/）
+│  │  ├─ app/              组合根：main.ts / settings.ts / debug.ts（只接线）
+│  │  ├─ shared/
+│  │  │  ├─ domain/        领域：types（契约+动作表）、profiles（模型档案）、speech/normalize/settings
+│  │  │  ├─ ipc/           基础设施：events / settings-client / window / cursor / log-forward（Tauri 桥）
+│  │  │  └─ ui/            表现工具：window-controls（自绘标题栏接线）
+│  │  ├─ mascot/           看板娘功能域
+│  │  │  ├─ application/   dispatcher（指令分发，含穷尽性检查）、model-switch（热切换/回滚）
+│  │  │  ├─ render/        live2d/（控制器 + Cubism Core）、fallback.ts（降级 Canvas）
+│  │  │  └─ ui/bubble.ts   说话气泡（DOM）
+│  │  ├─ settings/ui/      设置页 settings-page.ts
+│  │  ├─ debug/            MCP 调试面板：panel / args / ipc / log-view / types
+│  │  └─ styles/           main.css / settings.css / debug.css
 │  ├─ mcp/
 │  │  └─ tools.json        MCP 工具清单（Rust/TS 单一来源）
 │  └─ tauri/               Rust 后端（原 src-tauri，cargo 包根）

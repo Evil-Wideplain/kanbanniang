@@ -5,6 +5,7 @@
 
 mod commands;
 mod config;
+mod debug;
 mod log_setup;
 mod mcp;
 mod state;
@@ -25,11 +26,13 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
-        // 设置相关命令：读写持久化设置、按需重启 MCP 服务与热切换模型。
+        // 设置相关命令：读写持久化设置、按需重启 MCP 服务与热切换模型；另含窗口平滑移动。
         .invoke_handler(tauri::generate_handler![
             commands::get_settings,
             commands::get_runtime_status,
-            commands::save_settings
+            commands::save_settings,
+            commands::move_window,
+            debug::mcp_debug_call
         ])
         // 常驻托盘：关窗只隐藏不退出，真正结束进程走托盘菜单「退出」。
         .on_window_event(|window, event| {
@@ -47,8 +50,12 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
-            // 装配系统托盘（图标 + 右键菜单 + 显隐/设置/退出）；失败即启动失败，避免隐藏后无法唤回。
+            // 装配系统托盘（图标 + 右键菜单 + 显隐/设置/[调试]/退出）；失败即启动失败，避免隐藏后无法唤回。
             tray::init(app)?;
+
+            // 调试面板窗口：仅开发构建创建（默认隐藏，托盘「MCP 调试…」唤出）；release 不创建。
+            #[cfg(debug_assertions)]
+            debug::create_window(app)?;
 
             // 记录日志落盘位置（exe 同目录；回退时经 app_log_dir 解析），便于直接定位日志文件
             let log_dir = log_setup::file_dir()
@@ -92,6 +99,8 @@ pub fn run() {
             };
             app.manage(mcp::ServiceManager::new(server));
             app.manage(settings);
+            // 窗口滑动代次守卫：并发移动请求的抢占防护（move_window 命令注入使用）。
+            app.manage(commands::WindowGlideGuard::default());
 
             Ok(())
         })

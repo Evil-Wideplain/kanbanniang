@@ -1,0 +1,526 @@
+/*
+ * 调试面板样式（与设置窗口同款「俏皮手账」：奶油底 + 圆角贴纸卡片 + 和纸胶带）。
+ * 布局：左侧工具清单、右上参数卡、右下调用日志。
+ * 调色板与 settings.css 保持一致（两个页面独立加载，变量人工同步；改名有漂移风险，不改名合并）。
+ */
+:root {
+  --m-cream: #fdf4ee;
+  --m-ink: #4a3b45;
+  --m-muted: #9a8a92;
+  --m-coral: #ff7a8a;
+  --m-mint: #6ed0b3;
+  --m-butter: #ffd166;
+  --m-line: #efe1da;
+  --m-error: #d64545;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  background: transparent;
+}
+
+body {
+  color: var(--m-ink);
+  font-family: "M PLUS Rounded 1c", "PingFang SC", "Microsoft YaHei UI",
+    "Microsoft YaHei", sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 无系统边框：整页即一张圆角「手账纸」，圆角处透出桌面。
+   overflow 收口：背景层（100vh）即内容上界——内容只允许在卡内滚动，
+   任何增长都不产生文档级滚动，避免滚出奶油背景露出透明下层。 */
+.debug {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 22px 22px 18px;
+  background: var(--m-cream);
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+/* 手账风细滚动条（与设置窗口一致） */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: #e2cfc6;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #d6bdb1;
+  background-clip: content-box;
+}
+
+/* 顶部透明拖动条：覆盖标题区，任意位置都能拖（无系统边框） */
+.titlebar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 54px;
+  z-index: 5;
+}
+
+/* 自定义标题栏按钮（与设置窗口同构）：最小化、关闭（关闭=隐藏复用实例） */
+.win-btns {
+  position: absolute;
+  top: 18px;
+  right: 16px;
+  z-index: 6;
+  display: flex;
+  gap: 6px;
+}
+
+.win-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: #f0e2db;
+  color: var(--m-muted);
+  font: inherit;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.win-btn:hover {
+  filter: brightness(0.96);
+}
+
+.win-btn.close:hover {
+  background: var(--m-coral);
+  color: #fff;
+}
+
+.page-head {
+  user-select: none;
+}
+
+.page-head h1 {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+/* 标题里的马克笔高亮：衬在「MCP」下方 */
+.hl {
+  position: relative;
+  z-index: 0;
+  padding: 0 3px;
+}
+
+.hl::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  left: -1px;
+  right: -1px;
+  bottom: 1px;
+  height: 10px;
+  background: var(--m-butter);
+  border-radius: 5px;
+  transform: rotate(-1deg);
+}
+
+.sub {
+  margin-top: 6px;
+  color: var(--m-muted);
+  font-size: 12px;
+}
+
+/* 左右分栏：左 工具清单（定宽），右 参数卡 + 日志卡（日志吃剩余高度） */
+.layout {
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+  gap: 16px;
+  margin-top: 14px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* 右列：flex 而非 grid——参数卡（auto 行）在空间不足时可收缩并在卡内滚动，
+   min-width:0 则保证右侧内容（日志/参数）的最小宽度不会撑破轨道越过背景。 */
+.right {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* 圆角贴纸卡片（与设置窗口一致）；各卡微微旋转错落 */
+.card {
+  position: relative;
+  padding: 28px 18px 12px;
+  background: #fff;
+  border-radius: 18px;
+  box-shadow: 0 10px 22px rgba(150, 110, 110, 0.12);
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  transform: rotate(-0.45deg);
+}
+
+.params {
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 auto;
+  min-height: 0;
+  min-width: 0;
+  transform: rotate(0.4deg);
+}
+
+/* 参数卡内容滚动区：滚动发生在这层（而非卡片本身），胶带/角标不被裁掉 */
+.params-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.logbox {
+  display: flex;
+  flex-direction: column;
+  /* 从 0 基准吃掉剩余高度；min-height 保证参数卡再高日志列也不消失 */
+  flex: 1 1 0;
+  min-height: 150px;
+  min-width: 0;
+  transform: rotate(-0.3deg);
+}
+
+/* 和纸胶带：两端用 mask 做撕边（颜色随卡片区分） */
+.tape {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  width: 76px;
+  height: 20px;
+  transform: translateX(-50%) rotate(-3deg);
+  border-radius: 2px;
+  background: rgba(255, 209, 102, 0.6);
+  -webkit-mask: linear-gradient(
+    90deg,
+    transparent 2px,
+    #000 2px,
+    #000 calc(100% - 2px),
+    transparent calc(100% - 2px)
+  );
+}
+
+.card.mint .tape {
+  background: rgba(110, 208, 179, 0.55);
+}
+
+.tag {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #f7ede8;
+  color: var(--m-muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+/* 左侧工具清单：行式按钮 + 虚线分隔（与设置卡片行一致的手感） */
+.tool-list {
+  flex: 1;
+  min-height: 0;
+  margin: -8px 0 0;
+  overflow-y: auto;
+}
+
+.tool-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 10px;
+  border: none;
+  border-bottom: 1.5px dashed var(--m-line);
+  border-radius: 12px;
+  background: none;
+  color: var(--m-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tool-item:last-child {
+  border-bottom: none;
+}
+
+.tool-item:hover {
+  background: #fdf1ec;
+}
+
+.tool-item.on {
+  background: var(--m-coral);
+  color: #fff;
+  box-shadow: 0 5px 12px rgba(255, 122, 138, 0.32);
+}
+
+.tool-item__name {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  font-weight: 700;
+  word-break: break-all;
+}
+
+/* 「查询 / 动作」小徽标：薄荷=查询，粉=动作 */
+.badge {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.badge--query {
+  background: #e8f8f2;
+  color: #2f9e7e;
+}
+
+.badge--act {
+  background: #fdeef0;
+  color: #c4606f;
+}
+
+.tool-item.on .badge {
+  background: rgba(255, 255, 255, 0.28);
+  color: #fff;
+}
+
+.side-foot {
+  padding-top: 12px;
+}
+
+/* 参数卡：工具名 + 说明 + 参数行 + 调用按钮 */
+.params-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.params-name {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.params-desc {
+  margin: 4px 0 4px;
+  color: var(--m-muted);
+  font-size: 12px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  padding: 10px 0;
+  border-bottom: 1.5px dashed var(--m-line);
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.params-body .row {
+  min-height: 0;
+}
+
+.lbl {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.mono {
+  color: var(--m-muted);
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+/* 参数输入：右侧定宽（textarea 放宽），聚焦珊瑚色描边 */
+.field-input {
+  width: 218px;
+  padding: 6px 12px;
+  border: 2px solid var(--m-line);
+  border-radius: 12px;
+  background: #fff8f4;
+  color: var(--m-ink);
+  font: inherit;
+  font-size: 13px;
+  resize: vertical;
+}
+
+input[type="number"].field-input {
+  width: 130px;
+  text-align: right;
+}
+
+textarea.field-input {
+  width: 62%;
+  min-width: 220px;
+  line-height: 1.45;
+}
+
+.field-input:focus {
+  outline: none;
+  border-color: var(--m-coral);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 4px 2px;
+}
+
+.save {
+  padding: 9px 26px;
+  border: none;
+  border-radius: 15px;
+  background: var(--m-coral);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(255, 122, 138, 0.4);
+}
+
+.save:hover {
+  filter: brightness(1.04);
+}
+
+.save:active {
+  filter: brightness(0.96);
+}
+
+.ghost {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 13px;
+  background: #f3e9e4;
+  color: var(--m-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ghost:hover {
+  filter: brightness(0.98);
+}
+
+.msg {
+  margin-left: auto;
+  color: var(--m-muted);
+  font-size: 12.5px;
+}
+
+/* 日志卡：条目向下追加、自动滚底；左列时间，右侧状态 pill */
+.log-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin-top: 2px;
+  padding-right: 4px;
+}
+
+.lrow {
+  padding: 8px 2px;
+  border-bottom: 1.5px dashed var(--m-line);
+}
+
+.lrow__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--m-muted);
+  font-size: 11.5px;
+}
+
+.lrow__head .mono {
+  flex: 1;
+  min-width: 0;
+  word-break: break-all;
+}
+
+/* 响应文本不限高度（外层日志区滚动）；完整 JSON-RPC 帧过长也无碍 */
+.lrow__text {
+  margin-top: 4px;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.lrow--err .lrow__text {
+  color: var(--m-error);
+}
+
+/* 状态 pill：调用中（琥珀）/ 成功（薄荷）/ 失败（珊瑚红字） */
+.pill {
+  flex: none;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.pill.busy {
+  background: #fff3d6;
+  color: #b8863a;
+}
+
+.pill.ok {
+  background: #e8f8f2;
+  color: #2f9e7e;
+}
+
+.pill.err {
+  background: #fdeef0;
+  color: var(--m-error);
+}
+
+/* 空日志占位 */
+.log-body:empty::after {
+  display: block;
+  padding: 14px 2px;
+  color: var(--m-muted);
+  font-size: 12px;
+  content: "暂无调用记录";
+}

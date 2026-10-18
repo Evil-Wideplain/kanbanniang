@@ -2,8 +2,8 @@
  * Tauri 事件传输（基础设施层）：mascot:action 进 / mascot:result 出。
  * 纯传输不理解动作语义；非 Tauri 环境仅警告降级，不影响界面调试。
  */
-import type { MascotCommand, MascotResult } from "../core/types";
-import { CHANNELS } from "../core/types";
+import type { MascotCommand, MascotResult } from "@/shared/domain/types";
+import { CHANNELS } from "@/shared/domain/types";
 
 type EmitFn = (event: string, payload?: unknown) => Promise<unknown>;
 

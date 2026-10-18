@@ -6,12 +6,17 @@
 //! - 窗口置顶 / 开机自启 → 直接作用于运行态（窗口 API / autostart 插件）；
 //! - 不透明度 / 视线跟随 → 随完整设置广播 `mascot:settings`，由主窗口前端应用。
 //!
+//! 另提供窗口平滑移动命令 `move_window`（MCP `move` 工具经前端分发调入），
+//! 把主窗口滑到当前显示器工作区的归一化坐标。
+//!
 //! 装配（`lib.rs`）负责托管所需的共享状态；本模块只做用例编排。
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, Monitor, State, WebviewWindow};
 use tauri_plugin_autostart::ManagerExt;
 
 use crate::config::{self, Settings, SettingsStore};
@@ -206,4 +211,199 @@ fn apply_autostart(app: &AppHandle, enabled: bool) {
         Ok(()) => log::info!("[settings] 开机自启已{state_text}"),
         Err(e) => log::warn!("[settings] 应用开机自启失败（{state_text}）: {e}"),
     }
+}
+
+/// 窗口滑动代次守卫：新请求递增代次，旧滑动循环检测到代次变化即让位返回。
+/// 由 `lib.rs` 经 `app.manage()` 托管，命令以 `State<'_, WindowGlideGuard>` 注入。
+#[derive(Default)]
+pub struct WindowGlideGuard(AtomicU64);
+
+/// 窗口移动结果（与前端 `shared/domain/types.ts` 的 `WindowMoveOutcome` 成对镜像，camelCase）。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowMoveOutcome {
+    /// 最终生效的归一化坐标（工作区内，已截断到 [0,1]）。
+    pub x: f64,
+    pub y: f64,
+    /// 最终窗口外框左上角（物理像素，虚拟屏绝对坐标）。
+    pub physical_x: i32,
+    pub physical_y: i32,
+    /// 归一化输入超出 [0,1] 被截断。
+    pub clamped: bool,
+    /// 被更新的移动请求打断（本请求未滑到终点）。
+    pub superseded: bool,
+}
+
+/// `move_window` 的几何快照（物理像素，虚拟屏绝对坐标；采集一次供滑行与回读共用）。
+struct MoveFrame {
+    /// 工作区左上角（归一化坐标原点）。
+    origin_x: i32,
+    origin_y: i32,
+    /// 外框左上角可移动范围（工作区 − 窗口外框，≥ 0）。
+    range_x: f64,
+    range_y: f64,
+    /// 目标外框左上角。
+    target_x: i32,
+    target_y: i32,
+    /// 移动前的外框左上角。
+    start_x: i32,
+    start_y: i32,
+    /// 归一化输入超出 [0,1] 被截断。
+    clamped: bool,
+}
+
+/// 非有限值（NaN/Inf）按中点处理并截断到 [0,1]；返回（截断值，是否发生截断）。
+fn sanitize_axis(v: f64) -> (f64, bool) {
+    let finite = if v.is_finite() { v } else { 0.5 };
+    let cx = finite.clamp(0.0, 1.0);
+    (cx, cx != finite)
+}
+
+/// 解析窗口当前所在显示器（`None` 表示窗口不在任何显示器上，按失败处理）。
+fn resolve_monitor(window: &WebviewWindow) -> Result<Monitor, String> {
+    window
+        .current_monitor()
+        .map_err(|e| format!("获取当前显示器失败: {e}"))?
+        .ok_or_else(|| "当前窗口不在任何显示器上".to_string())
+}
+
+/// 托盘隐藏的窗口先显示（仅 show 不聚焦，避免抢用户焦点）；失败仅告警。
+fn show_if_hidden(window: &WebviewWindow) {
+    if matches!(window.is_visible(), Ok(false)) {
+        if let Err(e) = window.show() {
+            log::warn!("[move_window] 移动前显示窗口失败: {e}");
+        }
+    }
+}
+
+/// 采集窗口几何并算出归一化目标对应的外框左上角像素。
+///
+/// 坐标系：`Monitor::work_area` 工作区（已扣除任务栏），按「工作区 − 窗口外框」
+/// 的可移动范围换算，保证窗口外框完整落在工作区内；全程物理像素，避免 DPI 混算。
+fn plan_move(window: &WebviewWindow, x: f64, y: f64) -> Result<MoveFrame, String> {
+    let monitor = resolve_monitor(window)?;
+    let work = *monitor.work_area(); // 工作区矩形（物理像素，已扣除任务栏）
+    let win_size = window
+        .outer_size()
+        .map_err(|e| format!("读取窗口尺寸失败: {e}"))?;
+    let (cx, mut clamped) = sanitize_axis(x);
+    let (cy, clamped_y) = sanitize_axis(y);
+    clamped |= clamped_y;
+    // 外框左上角的可移动范围 = 工作区 − 窗口外框（小于 0 时贴工作区左上角）
+    let range_x = f64::from(work.size.width.saturating_sub(win_size.width));
+    let range_y = f64::from(work.size.height.saturating_sub(win_size.height));
+    let start = window
+        .outer_position()
+        .map_err(|e| format!("读取窗口位置失败: {e}"))?;
+    Ok(MoveFrame {
+        origin_x: work.position.x,
+        origin_y: work.position.y,
+        range_x,
+        range_y,
+        target_x: work.position.x + (range_x * cx).round() as i32,
+        target_y: work.position.y + (range_y * cy).round() as i32,
+        start_x: start.x,
+        start_y: start.y,
+        clamped,
+    })
+}
+
+/// 平滑滑到目标点；返回是否被更新的移动请求打断（superseded）。
+/// 已在目标点时直接返回（幂等快路径，不空转 600ms）。
+async fn glide(
+    window: &WebviewWindow,
+    frame: &MoveFrame,
+    guard: &WindowGlideGuard,
+    gen: u64,
+) -> Result<bool, String> {
+    if frame.start_x == frame.target_x && frame.start_y == frame.target_y {
+        return Ok(false);
+    }
+    glide_loop(window, frame, guard, gen).await
+}
+
+/// 滑行步进循环：600ms smoothstep 缓入缓出、~60fps 写位置。
+/// 循环内不打日志（logging 规范禁高频日志），汇总由调用方统一输出。
+async fn glide_loop(
+    window: &WebviewWindow,
+    frame: &MoveFrame,
+    guard: &WindowGlideGuard,
+    gen: u64,
+) -> Result<bool, String> {
+    let duration = Duration::from_millis(600); // 滑行时长（0.5~1s 取中；须远小于查询型 5s 超时）
+    let began = Instant::now();
+    loop {
+        if guard.0.load(Ordering::SeqCst) != gen {
+            return Ok(true); // 已有更新请求：让位，不再写位置
+        }
+        let t = (began.elapsed().as_secs_f64() / duration.as_secs_f64()).min(1.0);
+        let ease = t * t * (3.0 - 2.0 * t); // smoothstep 缓入缓出
+        let px = frame.start_x + ((frame.target_x - frame.start_x) as f64 * ease).round() as i32;
+        let py = frame.start_y + ((frame.target_y - frame.start_y) as f64 * ease).round() as i32;
+        if let Err(e) = window.set_position(tauri::PhysicalPosition::new(px, py)) {
+            log::error!("[move_window] 窗口移动失败: {e}");
+            return Err(format!("窗口移动失败: {e}"));
+        }
+        if t >= 1.0 {
+            return Ok(false);
+        }
+        tokio::time::sleep(Duration::from_millis(16)).await; // ~60fps 步进
+    }
+}
+
+/// 读回真实最终位置（而非假定目标达成），换算归一化坐标并封装结果信封。
+fn read_outcome(
+    window: &WebviewWindow,
+    frame: &MoveFrame,
+    superseded: bool,
+) -> Result<WindowMoveOutcome, String> {
+    let end = window
+        .outer_position()
+        .map_err(|e| format!("读取窗口位置失败: {e}"))?;
+    let norm = |px: i32, origin: i32, range: f64| -> f64 {
+        if range <= 0.0 {
+            0.0
+        } else {
+            ((px - origin) as f64 / range).clamp(0.0, 1.0)
+        }
+    };
+    Ok(WindowMoveOutcome {
+        x: norm(end.x, frame.origin_x, frame.range_x),
+        y: norm(end.y, frame.origin_y, frame.range_y),
+        physical_x: end.x,
+        physical_y: end.y,
+        clamped: frame.clamped,
+        superseded,
+    })
+}
+
+/// 平滑滑动主窗口到当前显示器工作区的归一化坐标
+/// （约 600ms、smoothstep 缓入缓出、~60fps 步进；MCP `move` 工具经前端分发调入）。
+/// 几何换算 / 滑行 / 回读拆在 `plan_move` / `glide` / `read_outcome`，
+/// 本函数只做编排（保持 CRAP 低于门禁阈值）。
+#[tauri::command]
+pub async fn move_window(
+    app: AppHandle,
+    guard: State<'_, WindowGlideGuard>,
+    x: f64,
+    y: f64,
+) -> Result<WindowMoveOutcome, String> {
+    let gen = guard.0.fetch_add(1, Ordering::SeqCst) + 1;
+    let Some(window) = app.get_webview_window(tray::MAIN_WINDOW) else {
+        return Err("未找到主窗口".to_string());
+    };
+    show_if_hidden(&window);
+    let frame = plan_move(&window, x, y)?;
+    let superseded = glide(&window, &frame, &guard, gen).await?;
+    let out = read_outcome(&window, &frame, superseded)?;
+    log::info!(
+        "[move_window] 平滑移动 ({x}, {y}) → ({}, {}) px=({}, {}) clamped={} superseded={}",
+        out.x,
+        out.y,
+        out.physical_x,
+        out.physical_y,
+        out.clamped,
+        out.superseded
+    );
+    Ok(out)
 }

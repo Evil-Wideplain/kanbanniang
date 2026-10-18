@@ -1,7 +1,7 @@
 ---
 title: 看板娘 — Agent Guide
 created: 2026-10-17
-updated: 2026-10-17
+updated: 2026-10-18
 type: concept
 tags: [project, tauri, live2d, mcp, rust, typescript, ai]
 description: Tauri + Live2D 桌面看板娘的 Agent 开发入口：常用命令、项目结构、核心链路、硬性规则与提交前验证；规范细则见内置 skill。
@@ -20,8 +20,9 @@ sources: [.]
 | `npm install` | 安装前端依赖 |
 | `npm run tauri:dev` | 开发运行（Vite 热更新 + Tauri 窗口） |
 | `make check` | 前端门禁：`tsc --noEmit` + Vite 构建（= `npm run build`）；前端改动必过 |
+| `make unit` | 前端单元测试（= `npm run test`，vitest）；改领域层/纯函数必过 |
 | `make lint` | Rust 门禁：clippy `--all-targets -- -D warnings` + fmt；Rust 改动必过 |
-| `make verify` | 提交前全量门禁（= `make check` + `make lint`） |
+| `make verify` | 提交前全量门禁（= `make check` + `make unit` + `make lint`） |
 | `make score` | Rust CRAP 复杂度打分（cargo-crap，无覆盖率数据按 0% 保守计） |
 | `node cmd/client/test.mjs` | MCP 冒烟测试（需应用已启动）；协议/工具改动必跑 |
 | `cargo check --all-targets` | Rust 编译快速检查（workdir: `src/tauri`） |
@@ -33,8 +34,8 @@ sources: [.]
 
 | 目录 | 职责 |
 |------|------|
-| `src/frontend/` | 前端：Live2D/降级渲染、MCP 指令分发、模型热切换、DOM 气泡、设置页（两窗口入口）（细则 [[src/frontend/AGENTS.md]]） |
-| `src/tauri/` | Rust 后端：Tauri 应用装配 + axum MCP SSE 服务 + 设置持久化与端口热重启 / 窗口置顶 / 开机自启（细则 [[src/tauri/AGENTS.md]]） |
+| `src/frontend/` | 前端（feature+shared 分包：`app/` 入口、`shared/` 契约与 IPC、`mascot/`+`settings/`+`debug/` 功能域、`styles/`）：Live2D/降级渲染、MCP 指令分发、模型热切换、DOM 气泡、设置页 + 调试面板（调试面板仅开发构建）（细则 [[src/frontend/AGENTS.md]]） |
+| `src/tauri/` | Rust 后端：Tauri 应用装配 + axum MCP SSE 服务 + 设置持久化与端口热重启 / 窗口置顶 / 开机自启 / 窗口平滑移动 `move_window` / 调试命令 `mcp_debug_call`（细则 [[src/tauri/AGENTS.md]]） |
 | `.agents/skills/` | 内置 Skill：`architecture`（分层/契约/模式）、`comments`、`logging`、`crap-analysis`、`commit`、`agents-md`（按需加载） |
 | `src/mcp/tools.json` | MCP 工具契约单一来源（Rust 与 TS 同源加载） |
 | `cmd/` | MCP 冒烟测试脚本（`client/test.mjs`） |
@@ -64,7 +65,7 @@ Agent（Claude Desktop 等） ──SSE / JSON-RPC──▶ Rust: axum MCP 服�
 
 ## 提交前验证清单
 
-1. 前端改动：`make check` 必过（= `npm run build`，含 tsc 类型检查）
+1. 前端改动：`make check` 必过（= `npm run build`，含 tsc 类型检查）；改领域层/纯函数另跑 `make unit`
 2. Rust 改动：`make lint` 必过；复杂度显著上升时 `make score` 复核
 3. 提交前可用 `make verify` 一次跑齐前端 + Rust 门禁
 4. 协议/工具/动作改动：启动 `npm run tauri:dev` 后用 `node cmd/client/test.mjs` 冒烟测试，并人工确认看板娘有响应

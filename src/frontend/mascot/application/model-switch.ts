@@ -2,10 +2,16 @@
  * 模型管理器（应用层）：默认档案初始化（含静默降级）、运行时热切换与回滚。
  * 切换遵循「先建后销、失败天然回滚」：新控制器建好才提交销毁旧的。
  */
-import type { MascotController, SetModelOutcome } from "./types";
-import type { ModelProfile } from "./profiles";
-import { DEFAULT_MODEL_ID, getProfile, MODEL_IDS, MODEL_PROFILES, profileMode } from "./profiles";
-import { FallbackMascot } from "./fallback";
+import type { MascotController, SetModelOutcome } from "@/shared/domain/types";
+import type { ModelProfile } from "@/shared/domain/profiles";
+import {
+  DEFAULT_MODEL_ID,
+  getProfile,
+  MODEL_IDS,
+  MODEL_PROFILES,
+  profileMode,
+} from "@/shared/domain/profiles";
+import { FallbackMascot } from "@/mascot/render/fallback";
 
 /** 模型生命周期：初始化（含静默降级）、运行时热切换、当前控制器访问。 */
 export interface ModelManager {
@@ -25,7 +31,7 @@ async function createController(
   profile: ModelProfile,
 ): Promise<MascotController> {
   if (!profile.config) return new FallbackMascot(canvas);
-  const { Live2DMascot } = await import("./live2d");
+  const { Live2DMascot } = await import("@/mascot/render/live2d");
   return Live2DMascot.create(canvas, profile);
 }
 

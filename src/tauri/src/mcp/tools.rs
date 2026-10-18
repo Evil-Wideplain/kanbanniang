@@ -2,7 +2,7 @@
 //!
 //! 单一来源是仓库的 src/mcp/tools.json：
 //! 工具名/描述/参数 schema/动作路由（action、query）都从这里读取，
-//! TS 侧（src/frontend/core/types.ts）同源导入。新增工具只需改清单 + 补 dispatcher case。
+//! TS 侧（src/frontend/shared/domain/types.ts）同源导入。新增工具只需改清单 + 补 dispatcher case。
 
 use std::sync::OnceLock;
 use std::time::Instant;
@@ -52,24 +52,35 @@ pub(super) fn list() -> Value {
         .collect::<Vec<_>>())
 }
 
-/// 处理 tools/call：按清单查路由，分发到看板娘动作或查询（响应成型与历史行为一致）。
+/// 处理 tools/call：解析参数 → 路由执行 → 封装 JSON-RPC 响应。
+/// 应用内调试面板（Tauri 命令）也共用本函数——自造 JSON-RPC id 调用并原样展示完整响应帧。
 pub(super) async fn call_tool(state: AppState, params: Value, id: Option<Value>) -> String {
     let name = params.get("name").and_then(|v| v.as_str()).unwrap_or("");
     let args = params.get("arguments").cloned().unwrap_or(Value::Null);
+    match route(&state, name, args).await {
+        Ok(result) => super::response(id, result),
+        Err(e) => {
+            error!("[mcp] tools/call 失败 tool={} error={}", name, e);
+            super::error_resp(id, -32602, &e)
+        }
+    }
+}
 
+/// 工具路由核心：查清单 → 分发（查询型等待前端回传 / 动作型发射即返回）→ 记录耗时。
+/// 未知工具返回 Err，由调用方组装 JSON-RPC 错误码（-32602）。
+async fn route(state: &AppState, name: &str, args: Value) -> Result<Value, String> {
     let Some(tool) = manifest().iter().find(|t| t.name == name) else {
-        error!("[mcp] tools/call 失败 tool={} error=未知工具", name);
-        return super::error_resp(id, -32602, &format!("未知工具: {}", name));
+        return Err(format!("未知工具: {}", name));
     };
 
     let started = Instant::now();
     let (text, failure) = if tool.query {
-        run_query(&state, &tool.action, args).await
+        run_query(state, &tool.action, args).await
     } else {
-        run_action(&state, &tool.action, args, name).await
+        run_action(state, &tool.action, args, name).await
     };
     log_call(name, started.elapsed(), failure.as_deref());
-    super::response(id, tool_result(text, failure.is_some()))
+    Ok(tool_result(text, failure.is_some()))
 }
 
 /// 查询型工具：转发前端并等待结果回传（5s），返回（展示文本, 失败原因）。

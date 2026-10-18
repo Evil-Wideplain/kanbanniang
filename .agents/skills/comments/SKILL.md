@@ -5,7 +5,7 @@ description: 中文注释规范——文件头模块注释、导出成员文档�
 
 # 注释规范（硬性要求）
 
-> 本仓库注释密度较高：中文、简短、直述结论。可参考 `src/tauri/src/state.rs`、`src/frontend/core/types.ts`、`src/frontend/core/profiles.ts`。
+> 本仓库注释密度较高：中文、简短、直述结论。可参考 `src/tauri/src/state.rs`、`src/frontend/shared/domain/types.ts`、`src/frontend/shared/domain/profiles.ts`。
 
 ## 硬性要求
 

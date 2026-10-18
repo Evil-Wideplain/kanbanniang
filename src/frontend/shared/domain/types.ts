@@ -4,7 +4,7 @@
  * 事件契约与 src/tauri/src/state.rs 成对镜像，字段改动必须两侧同步。
  */
 
-import mcpTools from "../../mcp/tools.json";
+import mcpTools from "../../../mcp/tools.json";
 
 /** 运行时工具清单（name/description/inputSchema/action/query，与 Rust 侧同源）。 */
 export const MCP_TOOLS = mcpTools;
@@ -18,9 +18,10 @@ export const MASCOT_ACTIONS = [
   "play_motion",
   "set_expression",
   "speak",
-  "move",
+  "move_in_window",
   "set_idle",
   // 下面是"查询型"动作：前端需要把结果回传给后端
+  "move",
   "list_motions",
   "list_expressions",
   "get_status",
@@ -120,6 +121,23 @@ export interface MascotStatus {
 export type SetModelOutcome =
   | { ok: true; model: string; mode: "live2d" | "fallback"; modelFile: string | null; unchanged?: boolean }
   | { ok: false; error: string; current?: string; available?: string[] };
+
+/**
+ * 窗口平滑移动结果（Tauri 命令 move_window 返回，
+ * 与 src/tauri/src/commands.rs 的 WindowMoveOutcome 成对镜像，camelCase）。
+ */
+export interface WindowMoveOutcome {
+  /** 最终生效的归一化坐标（工作区内，已截断到 [0,1]）。 */
+  x: number;
+  y: number;
+  /** 最终窗口外框左上角（物理像素）。 */
+  physicalX: number;
+  physicalY: number;
+  /** 归一化输入超出 [0,1] 被截断。 */
+  clamped: boolean;
+  /** 被更新的移动请求打断（本请求未滑到终点）。 */
+  superseded: boolean;
+}
 
 /** 动作/表情执行结果：回报真实生效的名字与是否走了回退。 */
 export interface ActionOutcome {

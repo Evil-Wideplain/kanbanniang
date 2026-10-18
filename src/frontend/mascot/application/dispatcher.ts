@@ -8,8 +8,9 @@ import type {
   MascotController,
   MascotResult,
   SetModelOutcome,
-} from "./types";
-import { DEFAULT_MODEL_ID, MODEL_PROFILES, profileMode } from "./profiles";
+  WindowMoveOutcome,
+} from "@/shared/domain/types";
+import { DEFAULT_MODEL_ID, MODEL_PROFILES, profileMode } from "@/shared/domain/profiles";
 
 /**
  * 指令分发所需的切换上下文（由 main.ts 注入，dispatcher 保持与 DOM 解耦）。
@@ -21,14 +22,16 @@ export interface CommandCtx {
   currentModelId(): string;
   /** 显示说话气泡（由 UI 层注入，先于口型/表情反馈触发）。 */
   showBubble?(text: string): void;
+  /** 平滑移动主窗口到工作区归一化坐标（Tauri 命令 move_window，由 main.ts 注入；非 Tauri 环境缺失）。 */
+  moveWindow?(x: number, y: number): Promise<WindowMoveOutcome>;
 }
 
 /**
  * 把后端转发过来的 MCP 指令分发给看板娘控制器，并准备好回传结果。
- * 查询型动作（list_* / get_status / set_model / list_models）会返回数据，
+ * 查询型动作（list_* / get_status / set_model / list_models / move）会返回数据，
  * 其它动作返回 "ok"。main.ts 负责把结果通过 Tauri 事件回传给后端。
  *
- * set_model 涉及异步加载，可能返回 Promise；调用方用
+ * set_model 涉及异步加载、move 涉及窗口滑行，可能返回 Promise；调用方用
  * `Promise.resolve(result)` 统一处理即可。
  */
 export function handleCommand(
@@ -64,7 +67,26 @@ export function handleCommand(
       case "move": {
         const x = Number(p.x ?? 0.5);
         const y = Number(p.y ?? 0.9);
-        console.info("[mascot] move 移动", { x, y });
+        console.info("[mascot] move 窗口移动", { x, y });
+        if (!ctx?.moveWindow) {
+          console.warn("[mascot] move 不可用（缺少窗口移动上下文，非 Tauri 环境？）");
+          return okValue(cmd.id, { ok: false, error: "move 不可用（缺少窗口移动上下文）" });
+        }
+        // 结果即 Rust 命令读回的最终坐标（clamped/superseded 原样透传）；
+        // 失败包成 {ok:false} 信封（同 set_model，走 Rust 的 isError 判定）。
+        return Promise.resolve(ctx.moveWindow(x, y))
+          .then((outcome) => {
+            console.info("[mascot] move 完成", { ...outcome });
+            return okValue(cmd.id, outcome);
+          })
+          .catch((e) =>
+            okValue(cmd.id, { ok: false, error: e instanceof Error ? e.message : String(e) }),
+          );
+      }
+      case "move_in_window": {
+        const x = Number(p.x ?? 0.5);
+        const y = Number(p.y ?? 0.9);
+        console.info("[mascot] move_in_window 窗口内移动", { x, y });
         c.moveTo(x, y);
         return okValue(cmd.id, "ok");
       }

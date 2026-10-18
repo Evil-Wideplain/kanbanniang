@@ -2,7 +2,7 @@
 
 降级看板娘（纯 Canvas）无需任何额外文件即可运行。要换成**真实 Live2D 角色**，按下面两步操作。
 
-> Cubism Core 运行时 `live2dcubismcore.min.js` 已内置于 `src/frontend/core/live2d/` 并随仓库提交，
+> Cubism Core 运行时 `live2dcubismcore.min.js` 已内置于 `src/frontend/mascot/render/live2d/` 并随仓库提交，
 > 由 Vite 打包进构建产物，无需手动获取。
 
 ## 1. 放入模型文件
@@ -22,7 +22,7 @@
 
 ## 2. 登记模型档案
 
-编辑 `src/frontend/core/profiles.ts`，在 `MODEL_PROFILES` 中登记一条档案：
+编辑 `src/frontend/shared/domain/profiles.ts`，在 `MODEL_PROFILES` 中登记一条档案：
 
 ```ts
 export const MODEL_PROFILES: ModelProfile[] = [
@@ -85,7 +85,7 @@ set_model {"model":"fallback"} → 切到降级 Canvas 模式
 
 ## 5. 排查
 
-- 控制台报「无法加载 Cubism Core」→ 检查 `src/frontend/core/live2d/live2dcubismcore.min.js` 是否存在（该文件应随仓库提交）。
+- 控制台报「无法加载 Cubism Core」→ 检查 `src/frontend/mascot/render/live2d/live2dcubismcore.min.js` 是否存在（该文件应随仓库提交）。
 - 报 404 找不到模型 → 检查 `modelDir`/`modelFile` 是否匹配 `models/...` 实际路径。
 - 模型加载失败会自动回退到降级看板娘，并在控制台给出警告，不会 crash。
 - `set_model` 切换失败会**保留原模型**（回滚），失败原因在 MCP 返回的 `{ok:false,error}` 中。
