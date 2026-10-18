@@ -19,7 +19,10 @@ sources: [.]
 | 路径 | 作用 | 边界 |
 |------|------|------|
 | `src/lib.rs` | 组合根：装配共享状态、注册结果监听器、读取设置、拉起 MCP 服务、注册设置命令、注册 autostart 插件、应用运行态偏好（`commands::apply_startup`） | 只做接线；启动失败记录日志并以非零码退出 |
-| `src/mcp/mod.rs` | 传输 + JSON-RPC 协议（axum SSE：握手、会话、消息回传）+ 服务生命周期（`ServiceManager` 按端口重启） | 不写工具语义；协议响应成型（错误码/字段）在此收口 |
+| `src/mcp/mod.rs` | 模块根：子模块声明与 re-export、共享常量（`DEFAULT_MCP_PORT` / `QUERY_TIMEOUT_SECS`）、`AppState` 别名 | 只做收口；协议文档头在此 |
+| `src/mcp/server.rs` | 服务生命周期：启动 / 停止 / 按端口热重启（`ServerHandle` / `ServiceManager`，先建后销） | 只做启停编排与路由装配；不写工具语义 |
+| `src/mcp/sse.rs` | 传输层：SSE 握手 / 会话治理（`sse_handler`）+ POST 入口（`post_handler` / `parse_request` / `SessionGuard`） | 只做传输与会话清理；协议分发交 `rpc` |
+| `src/mcp/rpc.rs` | JSON-RPC 协议：方法路由（initialize / ping / tools/list / tools/call）与响应封套成型（错误码/字段） | 不写工具语义与传输细节 |
 | `src/mcp/tools.rs` | 工具清单加载（`shared/mcp-tools.json` 编译期嵌入）与 `tools/call` 路由 | 只投影协议字段；`action`/`query` 内部字段不得混入 `tools/list` 响应 |
 | `src/state.rs` | 共享状态与事件端口：`mascot:action` 发射、`mascot:result` 等待（5s oneshot） | 跨线程表结构一律经访问器读写；类型与前端 `types.ts` 成对镜像 |
 | `src/config.rs` | 设置持久化：`settings.json` 读写（缺失/损坏回退默认值）+ 端口/不透明度校验 + 内存副本 `SettingsStore` | 只做持久化；字段与前端 `core/types.ts` 的 `MascotSettings` 成对镜像 |
@@ -35,7 +38,7 @@ sources: [.]
 
 ### MCP 请求链路
 
-`initialize` / `tools/list` / `tools/call` 由 `mcp/mod.rs` 解析协议 → `tools.rs` 路由工具 → `state.rs::dispatch` 发射 `mascot:action` 到前端；非查询型工具立即返回 `Accepted`，查询型等待 `mascot:result`（follow 5s 超时；超时必须清理 `pending` 表防泄漏）。
+`initialize` / `tools/list` / `tools/call` 由 `mcp/rpc.rs` 解析协议 → `tools.rs` 路由工具 → `state.rs::dispatch` 发射 `mascot:action` 到前端；非查询型工具立即返回 `Accepted`，查询型等待 `mascot:result`（follow 5s 超时；超时必须清理 `pending` 表防泄漏）。
 
 ### 常驻托盘与窗口行为
 
@@ -93,8 +96,8 @@ lint 配置唯一来源：`Cargo.toml` 的 `[lints]` 表与 `rustfmt.toml`。启
 复杂度打分（快捷入口：`make score`，基于 cargo-crap）：
 
 - 指标：`CRAP = CC² × (1 - cov)³ + CC`（CC 为圈复杂度，cov 为覆盖率），挑出「复杂且缺测试」的函数；本项目 Rust 测试（`config` / `mcp` 单测，见 `cargo test --lib`）尚未接入覆盖率工具，无覆盖率数据按 0% 保守计（结果偏严）。
-- 基线（2026-10-17，`save_settings` / `handle_rpc` 重构后）：61 个函数中 9 个超阈值 30，最高 `tray::init` 72（平台 cfg 装配，未拆）；其余为 CC 6/42 一档：`save_settings`、`reconcile_mcp`、`config::save`、`level_name`、`handle_rpc`、`call_tool`、`AppStateInner::dispatch`、`toggle_window`；重构热点时以分数不继续上升为约束。
-- 说明：本轮已把 `save_settings`（240→42）、`handle_rpc`（110→42）、`post_handler`（72→20）降到 42 以下；剩余 CC 6 函数的分支多为其语义本身（协议分发 / 校验 / 窗口与托盘 API 读写），继续拆收益递减。真正的降分杠杆是补测试（cov 上升），但本机 GNU 工具链的测试 exe 存在链接失败（见 `.cargo/config.toml` 已知问题），暂无法本地跑覆盖率。
+- 基线（2026-10-17，第二轮热点拆分后）：74 个函数，0 个超阈值 30；最高档 CRAP 30（CC 5）：`save_settings`、`reconcile_mcp`、`apply_autostart`、`config::save`、`read_settings`、`rpc_result`、`on_menu_event`；第二档 CRAP 20（CC 4）：`switch_model_if_changed`、`respond_sync`、`post_handler`、`AppStateInner::await_result`、`build_menu`、`toggle_window`；重构热点时以分数不继续上升为约束。
+- 说明：两轮已把 `tray::init`（72→12）、`save_settings`（240→30）、`handle_rpc`（110→12）、`call_tool`（42→≤6）、`AppStateInner::dispatch`（42→12）、`toggle_window`（42→20）、`level_name`（42→<6）等拆到阈值以下（手法：抽出 `build_menu`/`apply_icon`/`respond_sync`/`run_query`/`await_result` 等单一职责函数）。剩余 CRAP 30 一档的分支多为其语义本身（协议分发 / 校验 / 平台 API 读写），继续拆收益递减。真正的降分杠杆是补测试（cov 上升），但本机 GNU 工具链的测试 exe 存在链接失败（见 `.cargo/config.toml` 已知问题），暂无法本地跑覆盖率。
 - 完整用法（Windows 安装、覆盖率接入、CLI 选项与退出码、修复指引）见 [.agents/skills/crap-analysis/SKILL.md](../../.agents/skills/crap-analysis/SKILL.md)。
 
 按需扩展检查（未安装不影响开发；依赖/供应链变更时建议执行）：

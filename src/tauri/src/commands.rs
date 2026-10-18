@@ -91,21 +91,26 @@ pub async fn save_settings(
     )
     .await?;
 
-    // 模型变更：走既有 mascot:action 契约下发（主窗口热切换，失败仅告警）。
-    switch_model_if_changed(state.inner(), &current, &next).await;
-
-    // 窗口置顶：直接作用于主窗口（幂等）。
-    apply_always_on_top(&app, next.always_on_top);
-
-    // 不透明度 / 视线跟随：广播给主窗口前端应用（启动时主窗口已自行读取，无需广播）。
-    broadcast_settings(&app, &next);
-
-    // 开机自启：仅在变化时改动系统登录项。
-    if next.autostart != current.autostart {
-        apply_autostart(&app, next.autostart);
-    }
+    // 其余设置：模型热切换 / 窗口置顶 / 设置广播 / 开机自启（幂等，失败仅告警）。
+    apply_runtime_prefs(&app, state.inner(), &current, &next).await;
 
     Ok(next)
+}
+
+/// 保存成功后的运行态应用：模型热切换、窗口置顶、设置广播、开机自启
+/// （均幂等，失败仅告警，不影响已保存的设置）。
+async fn apply_runtime_prefs(
+    app: &AppHandle,
+    state: &AppStateInner,
+    current: &Settings,
+    next: &Settings,
+) {
+    switch_model_if_changed(state, current, next).await;
+    apply_always_on_top(app, next.always_on_top);
+    broadcast_settings(app, next);
+    if next.autostart != current.autostart {
+        apply_autostart(app, next.autostart);
+    }
 }
 
 /// reconcile MCP 服务运行态与配置。
@@ -133,12 +138,17 @@ async fn reconcile_mcp(
         log::warn!("[settings] MCP 服务未就绪（保存其他设置不受影响）: {e}");
         return Ok(());
     }
+    rollback_mcp(app, store, current, &e);
+    Err(format!("MCP 服务切换失败: {e}"))
+}
+
+/// 显式变更失败时回滚配置到 `current`（磁盘 + 内存副本），保证「磁盘 / 内存 / 运行态」一致。
+fn rollback_mcp(app: &AppHandle, store: &SettingsStore, current: &Settings, e: &anyhow::Error) {
     log::error!("[settings] MCP 服务切换失败: {e}");
     if let Err(revert) = config::save(app, current) {
         log::error!("[settings] 切换失败后回滚配置失败: {revert}");
     }
     store.set(current.clone());
-    Err(format!("MCP 服务切换失败: {e}"))
 }
 
 /// 模型 id 变化时经 `mascot:action` 契约下发 `set_model`（失败仅告警，不影响保存）。

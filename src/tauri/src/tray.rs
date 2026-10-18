@@ -10,9 +10,9 @@
 #[cfg(target_os = "macos")]
 use tauri::image::Image;
 use tauri::{
-    menu::{Menu, MenuItem},
-    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    App, AppHandle, Manager,
+    menu::{Menu, MenuEvent, MenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent},
+    App, AppHandle, Manager, WebviewWindow,
 };
 
 /// 主窗口标签（与 `tauri.conf.json` 的 `windows[].label` 对应）。
@@ -35,35 +35,30 @@ const MENU_QUIT: &str = "quit";
 /// 装配系统托盘：图标、右键菜单与事件回调。
 /// 失败必须上抛：托盘是常驻应用隐藏后唯一的找回入口，缺托盘等于无法再唤出看板娘。
 pub(crate) fn init(app: &App) -> tauri::Result<()> {
-    let toggle = MenuItem::with_id(app, MENU_TOGGLE, "显示/隐藏看板娘", true, None::<&str>)?;
-    let settings = MenuItem::with_id(app, MENU_SETTINGS, "设置…", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, MENU_QUIT, "退出", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&toggle, &settings, &quit])?;
-
-    let mut builder = TrayIconBuilder::with_id("main")
+    let menu = build_menu(app)?;
+    let builder = TrayIconBuilder::with_id("main")
         .menu(&menu)
         // 左键留给显隐切换，右键才弹菜单（符合 Windows 托盘习惯）
         .show_menu_on_left_click(false)
         .tooltip("看板娘")
-        .on_menu_event(|app, event| match event.id.as_ref() {
-            MENU_TOGGLE => toggle_window(app),
-            MENU_SETTINGS => show_settings_window(app),
-            MENU_QUIT => app.exit(0),
-            _ => {}
-        })
-        .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::Click {
-                button: MouseButton::Left,
-                button_state: MouseButtonState::Up,
-                ..
-            } = event
-            {
-                toggle_window(tray.app_handle());
-            }
-        });
+        .on_menu_event(on_menu_event)
+        .on_tray_icon_event(on_tray_icon_event);
 
-    // 托盘图标按平台区分：macOS 用单色模板图（随深浅色反色）；其余平台复用默认窗口图标。
-    // 图标缺失或解码失败都不阻塞启动，仅告警（托盘仍会以内置占位图出现）。
+    apply_icon(app, builder).build(app)?;
+    Ok(())
+}
+
+/// 构建托盘右键菜单（显示/隐藏、设置、退出）。
+fn build_menu(app: &App) -> tauri::Result<Menu<tauri::Wry>> {
+    let toggle = MenuItem::with_id(app, MENU_TOGGLE, "显示/隐藏看板娘", true, None::<&str>)?;
+    let settings = MenuItem::with_id(app, MENU_SETTINGS, "设置…", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, MENU_QUIT, "退出", true, None::<&str>)?;
+    Menu::with_items(app, &[&toggle, &settings, &quit])
+}
+
+/// 按平台选择托盘图标：macOS 用单色模板图（随深浅色反色），其余平台复用默认窗口图标。
+/// 图标缺失/解码失败都不阻塞启动，仅告警（托盘仍会以内置占位图出现）。
+fn apply_icon(app: &App, mut builder: TrayIconBuilder<tauri::Wry>) -> TrayIconBuilder<tauri::Wry> {
     #[cfg(target_os = "macos")]
     match Image::from_bytes(TRAY_TEMPLATE_PNG) {
         Ok(icon) => builder = builder.icon(icon).icon_as_template(true),
@@ -78,8 +73,29 @@ pub(crate) fn init(app: &App) -> tauri::Result<()> {
         builder = with_default_icon(app, builder);
     }
 
-    builder.build(app)?;
-    Ok(())
+    builder
+}
+
+/// 处理托盘右键菜单事件：切换显隐 / 打开设置 / 退出。
+fn on_menu_event(app: &AppHandle, event: MenuEvent) {
+    match event.id.as_ref() {
+        MENU_TOGGLE => toggle_window(app),
+        MENU_SETTINGS => show_settings_window(app),
+        MENU_QUIT => app.exit(0),
+        _ => {}
+    }
+}
+
+/// 处理托盘图标点击事件：左键抬起即切换看板娘显隐。
+fn on_tray_icon_event(tray: &TrayIcon, event: TrayIconEvent) {
+    if let TrayIconEvent::Click {
+        button: MouseButton::Left,
+        button_state: MouseButtonState::Up,
+        ..
+    } = event
+    {
+        toggle_window(tray.app_handle());
+    }
 }
 
 /// 复用应用默认窗口图标（与打包图标同源）；缺失时仅告警，交由系统占位。
@@ -103,18 +119,23 @@ fn toggle_window(app: &AppHandle) {
         return;
     };
     match window.is_visible() {
-        Ok(true) => {
-            // 隐藏失败不能静默：否则用户以为已收起，实际仍在桌面上
-            if let Err(e) = window.hide() {
-                log::warn!("[tray] 隐藏主窗口失败: {e}");
-            }
-        }
-        Ok(false) => {
-            if let Err(e) = window.show().and_then(|()| window.set_focus()) {
-                log::warn!("[tray] 显示主窗口失败: {e}");
-            }
-        }
+        Ok(true) => hide_window(&window),
+        Ok(false) => show_window(&window, "主窗口"),
         Err(e) => log::warn!("[tray] 读取主窗口可见性失败: {e}"),
+    }
+}
+
+/// 隐藏窗口（隐藏失败不能静默：否则用户以为已收起，实际仍在桌面上）。
+fn hide_window(window: &WebviewWindow) {
+    if let Err(e) = window.hide() {
+        log::warn!("[tray] 隐藏主窗口失败: {e}");
+    }
+}
+
+/// 显示并聚焦窗口（主窗口 / 设置窗口共用；`what` 用于日志区分对象）。
+fn show_window(window: &WebviewWindow, what: &str) {
+    if let Err(e) = window.show().and_then(|()| window.set_focus()) {
+        log::warn!("[tray] 显示{what}失败: {e}");
     }
 }
 
@@ -124,7 +145,5 @@ fn show_settings_window(app: &AppHandle) {
         log::warn!("[tray] 未找到设置窗口 {SETTINGS_WINDOW}，忽略打开请求");
         return;
     };
-    if let Err(e) = window.show().and_then(|()| window.set_focus()) {
-        log::warn!("[tray] 显示设置窗口失败: {e}");
-    }
+    show_window(&window, "设置窗口");
 }

@@ -53,25 +53,39 @@ cd src/tauri && cargo crap --lcov lcov.info
 
 退出码：`0` 正常；`1` 触发了 `--fail-above` / `--fail-regression`；`2` 运行失败（用法/输入/分析错误）。
 
-## 当前基线（2026-10-17，`save_settings` / `handle_rpc` 重构后）
+## 当前基线（2026-10-17，第二轮热点拆分后）
 
-61 个函数中 9 个超阈值 30（实测 `cargo crap`）：
+74 个函数，0 个超阈值 30（实测 `cargo crap --summary`）。最高档为 CRAP 30（CC 5）：
 
 | 函数 | CRAP | CC | 位置 |
 |------|------|-----|------|
-| `tray::init` | 72 | 8 | `src/tauri/src/tray.rs:37`（平台 cfg 装配，暂未拆） |
-| `save_settings` | 42 | 6 | `src/tauri/src/commands.rs:65` |
-| `reconcile_mcp` | 42 | 6 | `src/tauri/src/commands.rs:115` |
-| `config::save` | 42 | 6 | `src/tauri/src/config.rs:97` |
-| `level_name` | 42 | 6 | `src/tauri/src/log_setup.rs:42` |
-| `handle_rpc` | 42 | 6 | `src/tauri/src/mcp/mod.rs:247` |
-| `call_tool` | 42 | 6 | `src/tauri/src/mcp/tools.rs:56` |
-| `AppStateInner::dispatch` | 42 | 6 | `src/tauri/src/state.rs:92` |
-| `toggle_window` | 42 | 6 | `src/tauri/src/tray.rs:100` |
+| `save_settings` | 30 | 5 | `src/tauri/src/commands.rs` |
+| `reconcile_mcp` | 30 | 5 | `src/tauri/src/commands.rs` |
+| `apply_autostart` | 30 | 5 | `src/tauri/src/commands.rs` |
+| `config::save` | 30 | 5 | `src/tauri/src/config.rs` |
+| `read_settings` | 30 | 5 | `src/tauri/src/config.rs` |
+| `rpc_result` | 30 | 5 | `src/tauri/src/mcp/rpc.rs` |
+| `on_menu_event` | 30 | 5 | `src/tauri/src/tray.rs` |
 
-本轮改进：`save_settings` 240→42、`handle_rpc` 110→42、`post_handler` 72→20。剩余 CC 6 函数的分支多为其语义本身（协议分发 / 校验 / 窗口与托盘 API 读写），继续拆收益递减；真正的降分杠杆是补测试（cov 上升）。
+第二档 CRAP 20（CC 4）：`switch_model_if_changed`、`respond_sync`、`post_handler`、`AppStateInner::await_result`、`build_menu`、`toggle_window`。
 
-已补 Rust 单测（`config.rs` 校验/默认值、`mcp/mod.rs` 路由/封套、`mcp/tools.rs` 清单投影，`cargo test --lib`），但尚未接入覆盖率：本机 GNU 工具链的测试 exe 存在链接失败（`.cargo/config.toml` 已记录的 rust-lld 问题），`cargo llvm-cov` 暂无法本地产出 lcov。修复该工具链后可 `cargo llvm-cov --lcov --output-path lcov.info` + `cargo crap --lcov lcov.info` 让分数显著下降。
+两轮改进（同一批热点，第一轮 → 第二轮）：
+
+| 函数 | CRAP | CC | 拆分手法 |
+|------|------|-----|----------|
+| `tray::init` | 72 → 12 | 8 → 3 | 抽出 `build_menu` / `apply_icon` / `on_menu_event` / `on_tray_icon_event` |
+| `save_settings` | 240 → 42 → 30 | → 5 | 抽出 `reconcile_mcp` / `apply_runtime_prefs` |
+| `reconcile_mcp` | 42 → 30 | 6 → 5 | 抽出失败回滚 `rollback_mcp` |
+| `handle_rpc` | 110 → 42 → 12 | → 3 | 抽出 `respond_sync`（通知/未知方法分支） |
+| `call_tool` | 42 → ≤6 | 6 → ≤2 | 抽出 `run_query` / `run_action` |
+| `AppStateInner::dispatch` | 42 → 12 | 6 → 3 | 抽出 `await_result`（超时等待） |
+| `toggle_window` | 42 → 20 | 6 → 4 | 抽出 `hide_window` / `show_window` |
+| `level_name` | 42 → <6 | 6 → 1 | 改 `Level::as_str().to_ascii_lowercase()` 取代 5 臂 match |
+| `config::save` | 42 → 30 | 6 → 5 | 抽出 `ensure_parent_dir` |
+
+剩余 CRAP 30 一档的分支多为其语义本身（协议分发 / 校验 / 平台 API 读写），继续拆收益递减；真正的降分杠杆是补测试（cov 上升）。
+
+已补 Rust 单测（`config.rs` 校验/默认值、`mcp/rpc.rs` 路由/封套、`mcp/sse.rs` 请求解析、`mcp/tools.rs` 清单投影，`cargo test --lib`），但尚未接入覆盖率：本机 GNU 工具链的测试 exe 存在链接失败（`.cargo/config.toml` 已记录的 rust-lld 问题），`cargo llvm-cov` 暂无法本地产出 lcov。修复该工具链后可 `cargo llvm-cov --lcov --output-path lcov.info` + `cargo crap --lcov lcov.info` 让分数显著下降。
 
 重构这些热点时以「分数不继续上升」为约束；重构后重跑 `make score`，把新基线同步到本文件与 `src/tauri/AGENTS.md`。
 

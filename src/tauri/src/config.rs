@@ -96,10 +96,16 @@ pub fn validate_opacity(opacity: u8) -> anyhow::Result<()> {
 /// 把设置写入磁盘（自动创建配置目录）。
 pub fn save(app: &AppHandle, settings: &Settings) -> anyhow::Result<()> {
     let path = settings_path(app).ok_or_else(|| anyhow::anyhow!("无法解析应用配置目录"))?;
+    ensure_parent_dir(&path)?;
+    std::fs::write(&path, serde_json::to_string_pretty(settings)?)?;
+    Ok(())
+}
+
+/// 确保设置文件的父目录存在（首次运行时自动创建）。
+fn ensure_parent_dir(path: &std::path::Path) -> anyhow::Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    std::fs::write(&path, serde_json::to_string_pretty(settings)?)?;
     Ok(())
 }
 

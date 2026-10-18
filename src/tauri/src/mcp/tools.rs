@@ -63,41 +63,41 @@ pub(super) async fn call_tool(state: AppState, params: Value, id: Option<Value>)
     };
 
     let started = Instant::now();
-
-    let call_result: Value = if tool.query {
-        match state.dispatch(&tool.action, args, true).await {
-            Ok(val) => {
-                // 前端失败信封 {ok:false,...} → 标记为工具错误；成功载荷无 ok 字段不受影响
-                let is_error = val.get("ok").and_then(|v| v.as_bool()) == Some(false);
-                log_call(
-                    name,
-                    started.elapsed(),
-                    is_error.then_some("前端返回失败信封"),
-                );
-                tool_result(
-                    serde_json::to_string_pretty(&val).unwrap_or_default(),
-                    is_error,
-                )
-            }
-            Err(e) => {
-                log_call(name, started.elapsed(), Some(&e.to_string()));
-                tool_result(format!("查询失败: {}", e), true)
-            }
-        }
+    let (text, failure) = if tool.query {
+        run_query(&state, &tool.action, args).await
     } else {
-        match state.dispatch(&tool.action, args, false).await {
-            Ok(_) => {
-                log_call(name, started.elapsed(), None);
-                tool_result(format!("已触发动作: {}", name), false)
-            }
-            Err(e) => {
-                log_call(name, started.elapsed(), Some(&e.to_string()));
-                tool_result(format!("执行失败: {}", e), true)
-            }
-        }
+        run_action(&state, &tool.action, args, name).await
     };
+    log_call(name, started.elapsed(), failure.as_deref());
+    super::response(id, tool_result(text, failure.is_some()))
+}
 
-    super::response(id, call_result)
+/// 查询型工具：转发前端并等待结果回传（5s），返回（展示文本, 失败原因）。
+/// 前端失败信封 `{ok:false,...}` 视为工具错误；成功载荷无 ok 字段不受影响。
+async fn run_query(state: &AppState, action: &str, args: Value) -> (String, Option<String>) {
+    match state.dispatch(action, args, true).await {
+        Ok(val) => {
+            let is_error = val.get("ok").and_then(|v| v.as_bool()) == Some(false);
+            (
+                serde_json::to_string_pretty(&val).unwrap_or_default(),
+                is_error.then(|| "前端返回失败信封".to_string()),
+            )
+        }
+        Err(e) => (format!("查询失败: {}", e), Some(e.to_string())),
+    }
+}
+
+/// 发射型工具：下发动作即返回（不等待结果），返回（展示文本, 失败原因）。
+async fn run_action(
+    state: &AppState,
+    action: &str,
+    args: Value,
+    name: &str,
+) -> (String, Option<String>) {
+    match state.dispatch(action, args, false).await {
+        Ok(_) => (format!("已触发动作: {}", name), None),
+        Err(e) => (format!("执行失败: {}", e), Some(e.to_string())),
+    }
 }
 
 /// 组装 tools/call 结果信封（content[0].text + isError；协议形状在此收口）。

@@ -39,14 +39,9 @@ pub(crate) fn file_dir() -> Option<&'static Path> {
 }
 
 /// `log::Level` → 小写级别名（对齐落盘行 `level=xx` 与前端 console 方法名）。
-fn level_name(level: log::Level) -> &'static str {
-    match level {
-        log::Level::Error => "error",
-        log::Level::Warn => "warn",
-        log::Level::Info => "info",
-        log::Level::Debug => "debug",
-        log::Level::Trace => "trace",
-    }
+/// `Level::as_str()` 返回大写，统一转小写。
+fn level_name(level: log::Level) -> String {
+    level.as_str().to_ascii_lowercase()
 }
 
 /// 日志文件目标：优先可执行文件同目录（便于就近查看、随包分发）；

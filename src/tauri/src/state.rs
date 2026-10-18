@@ -109,8 +109,16 @@ impl AppStateInner {
 
         let (tx, rx) = oneshot::channel::<Value>();
         self.pending().insert(id.clone(), tx);
+        self.await_result(id, rx).await
+    }
 
-        // 超时后必须从 pending 表移除，防止前端迟到回传匹配到已放弃的通道（表泄漏）。
+    /// 等待前端回传查询结果（最多 5 秒）。
+    /// 超时后必须从 pending 表移除，防止前端迟到回传匹配到已放弃的通道（表泄漏）。
+    async fn await_result(
+        &self,
+        id: String,
+        rx: oneshot::Receiver<Value>,
+    ) -> anyhow::Result<Value> {
         let timeout = std::time::Duration::from_secs(crate::mcp::QUERY_TIMEOUT_SECS);
         match tokio::time::timeout(timeout, rx).await {
             Ok(Ok(val)) => Ok(val),
