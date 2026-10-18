@@ -36,7 +36,7 @@ sources: [.]
 | `src/frontend/` | 前端：Live2D/降级渲染、MCP 指令分发、模型热切换、DOM 气泡、设置页（两窗口入口）（细则 [[src/frontend/AGENTS.md]]） |
 | `src/tauri/` | Rust 后端：Tauri 应用装配 + axum MCP SSE 服务 + 设置持久化与端口热重启 / 窗口置顶 / 开机自启（细则 [[src/tauri/AGENTS.md]]） |
 | `.agents/skills/` | 内置 Skill：`architecture`（分层/契约/模式）、`comments`、`logging`、`crap-analysis`、`commit`、`agents-md`（按需加载） |
-| `shared/mcp-tools.json` | MCP 工具契约单一来源（Rust 与 TS 同源加载） |
+| `src/mcp/tools.json` | MCP 工具契约单一来源（Rust 与 TS 同源加载） |
 | `cmd/` | MCP 冒烟测试脚本（`client/test.mjs`） |
 | `models/` | Live2D 模型资源（gitignore，不入库；见 `models/README.md`） |
 
@@ -57,7 +57,7 @@ Agent（Claude Desktop 等） ──SSE / JSON-RPC──▶ Rust: axum MCP 服�
 ## 编码硬性规则（速记）
 
 - 依赖单向：表现 → 应用 → 领域；基础设施向领域契约收敛；跨层走类型化契约，禁止裸 `any` / 无结构字符串。
-- 契约先行：工具唯一来源 `shared/mcp-tools.json`；事件契约 `types.ts` ↔ `state.rs` 成对维护；设置契约 `MascotSettings` ↔ `config.rs` 成对维护（启用 MCP / 端口 / 模型 / 置顶 / 视线跟随 / 不透明度 / 开机自启）；通道 `mascot:action` / `mascot:result` / `mascot:settings`。
+- 契约先行：工具唯一来源 `src/mcp/tools.json`；事件契约 `types.ts` ↔ `state.rs` 成对维护；设置契约 `MascotSettings` ↔ `config.rs` 成对维护（启用 MCP / 端口 / 模型 / 置顶 / 视线跟随 / 不透明度 / 开机自启）；通道 `mascot:action` / `mascot:result` / `mascot:settings`。
 - 注释与日志一律中文、带模块前缀；运行日志必须可查（Rust 经 `log::info!`/`log::warn!`/`log::error!` 门面、由 tauri-plugin-log 双写 stderr+文件，前端 `[mascot]` 日志经官方插件 JS 桥自动转发落盘）；Rust 错误用 `Result` 传播，禁裸 `unwrap` / `expect` / `panic`（lint 强制，受控例外仅 `tools.rs::manifest`）。
 - 提交信息：每次生成 commit msg **必须**加载并遵循 skill `commit`（Conventional Commits，`type(scope): 中文 subject`，正文解释「为什么」）；未获明确要求不提交。
 - 完整规则按需加载：skill `architecture` / `comments` / `logging` / `crap-analysis` / `commit`。

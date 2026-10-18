@@ -45,7 +45,7 @@ Rust 后端对应「基础设施 + 接口层」：`lib.rs` 只做组装；`mcp/m
 
 ## 契约同步（硬性）
 
-1. 工具契约唯一来源 `shared/mcp-tools.json`，新增工具的顺序：
+1. 工具契约唯一来源 `src/mcp/tools.json`，新增工具的顺序：
    1. 清单中登记（name / description / inputSchema / action / query）
    2. `src/frontend/core/types.ts` 的 `MASCOT_ACTIONS` 补上动作名（运行时互校，不一致会告警）
    3. 前端 `dispatcher.ts` 补 case（穷尽性检查会强制编译失败，防止遗漏）

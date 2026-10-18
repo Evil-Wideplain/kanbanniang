@@ -33,7 +33,7 @@ pub struct MascotCommand {
     pub id: String,
     /// 动作名（MascotAction）。
     pub action: String,
-    /// 动作参数（不同动作结构不同，schema 见 shared/mcp-tools.json）。
+    /// 动作参数（不同动作结构不同，schema 见 src/mcp/tools.json）。
     pub params: Value,
 }
 

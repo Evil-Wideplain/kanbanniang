@@ -23,7 +23,7 @@ sources: [.]
 | `src/mcp/server.rs` | 服务生命周期：启动 / 停止 / 按端口热重启（`ServerHandle` / `ServiceManager`，先建后销） | 只做启停编排与路由装配；不写工具语义 |
 | `src/mcp/sse.rs` | 传输层：SSE 握手 / 会话治理（`sse_handler`）+ POST 入口（`post_handler` / `parse_request` / `SessionGuard`） | 只做传输与会话清理；协议分发交 `rpc` |
 | `src/mcp/rpc.rs` | JSON-RPC 协议：方法路由（initialize / ping / tools/list / tools/call）与响应封套成型（错误码/字段） | 不写工具语义与传输细节 |
-| `src/mcp/tools.rs` | 工具清单加载（`shared/mcp-tools.json` 编译期嵌入）与 `tools/call` 路由 | 只投影协议字段；`action`/`query` 内部字段不得混入 `tools/list` 响应 |
+| `src/mcp/tools.rs` | 工具清单加载（`src/mcp/tools.json` 编译期嵌入）与 `tools/call` 路由 | 只投影协议字段；`action`/`query` 内部字段不得混入 `tools/list` 响应 |
 | `src/state.rs` | 共享状态与事件端口：`mascot:action` 发射、`mascot:result` 等待（5s oneshot） | 跨线程表结构一律经访问器读写；类型与前端 `types.ts` 成对镜像 |
 | `src/config.rs` | 设置持久化：`settings.json` 读写（缺失/损坏回退默认值）+ 端口/不透明度校验 + 内存副本 `SettingsStore` | 只做持久化；字段与前端 `core/types.ts` 的 `MascotSettings` 成对镜像 |
 | `src/commands.rs` | 设置命令（接口层）：`get_settings` / `get_runtime_status`（MCP 实际端口/运行态）/ `save_settings`（MCP 开关与端口变更启停服务、模型变更热切换、窗口置顶/开机自启作用于运行态、不透明度与视线跟随广播 `mascot:settings`）；`apply_startup` 启动时应用运行态偏好 | 只做用例编排；持久化交 `config.rs`、启停交 `mcp::ServiceManager`、窗口交 Tauri 窗口 API、自启交 autostart 插件 |
@@ -124,7 +124,7 @@ lint 配置唯一来源：`Cargo.toml` 的 `[lints]` 表与 `rustfmt.toml`。启
 
 ## 依赖关系
 
-- 依赖 `shared/mcp-tools.json`（`include_str!` 编译期嵌入）。
+- 依赖 `src/mcp/tools.json`（`include_str!` 编译期嵌入）。
 - 依赖 `tauri-plugin-autostart`（开机自启：Windows 写 `HKCU\...\Run`，macOS 走 LaunchAgent）；插件 `setup` 阶段托管 `AutoLaunchManager`，经 `ManagerExt::autolaunch()` 调用，故 `apply_startup`/`save_settings` 必须在插件注册之后执行。
 - 与前端仅通过「Tauri 事件契约 + JSON 字段」耦合（`state.rs` ↔ `types.ts`），不依赖前端代码。
 - 本仓库设置了 rustup 目录 override：工具链为 `stable-x86_64-pc-windows-gnu`（`rustup override list` 可查）；工具安装/构建行为以该工具链为准。

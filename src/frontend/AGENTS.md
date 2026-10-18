@@ -29,7 +29,7 @@ sources: [.]
 
 - 依赖方向单向：表现 → 应用 → 领域；基础设施向领域接口 `MascotController` 收敛，禁止反向 import。
 - DOM 访问白名单：`ui/`、根入口 `main.ts` / `settings.ts`、`core/fallback.ts`、`core/live2d/`，以及 `core/model-switch.ts` 的画布切换逻辑；`core/` 其余模块（`types.ts`、`profiles.ts`、`speech.ts`、`settings.ts`、`dispatcher.ts`）与 `ipc/` 内禁止直接操作 `document.*` / `window.*`。
-- 新增 MCP 动作的固定顺序：`shared/mcp-tools.json` → `types.ts` 的 `MASCOT_ACTIONS` → `dispatcher.ts` case → 两个控制器实现（`live2d/` 与 `fallback.ts` 都要覆盖）→ 冒烟验证。
+- 新增 MCP 动作的固定顺序：`src/mcp/tools.json` → `types.ts` 的 `MASCOT_ACTIONS` → `dispatcher.ts` case → 两个控制器实现（`live2d/` 与 `fallback.ts` 都要覆盖）→ 冒烟验证。
 - `dispatcher.ts` 的 `switch` 有穷尽性检查（`const _exhaustive: never`）：新增动作漏写 case 会编译失败；禁止用 `default` 兜底绕过。
 - 模型切换遵循「先建后销、失败天然回滚」（先在游离画布建好新控制器才提交，见 `model-switch.ts`），禁止改成先销毁旧实例。
 - 设置契约 `MascotSettings`（`types.ts`）与 Rust `config.rs::Settings` 成对镜像（camelCase）：启用 MCP / 端口 / 模型 / 置顶 / 视线跟随 / 不透明度 / 开机自启。MCP 启停与端口、窗口置顶、开机自启由后端作用于运行态（`get_runtime_status` 回读真实端口/运行态）；不透明度经事件 `mascot:settings` 由 `main.ts` 写到 CSS 变量 `--mascot-opacity`（`#stage` 引用），模型热切换重建画布后仍沿用；视线跟随同经 `mascot:settings` 由 `model-switch.ts` 应用到控制器（仅 Live2D 生效：`ipc/cursor.ts` 读全局光标，`live2d/` 调 `focus` 扩展为**全屏**跟随；窗口内跟随由库 `autoInteract` 常驻、不受开关影响；降级为空实现）。
@@ -49,7 +49,7 @@ sources: [.]
 
 ## 依赖关系
 
-- 领域层仅依赖 TS 标准库与 `shared/mcp-tools.json`；禁止 DOM / Tauri / pixi。
+- 领域层仅依赖 TS 标准库与 `src/mcp/tools.json`；禁止 DOM / Tauri / pixi。
 - 与 Rust 后端仅通过 Tauri 事件契约耦合（`types.ts` ↔ `state.rs`）。
 - 外部依赖：pixi.js v6 + pixi-live2d-display（仅 Live2D 路径加载）；降级模式零第三方依赖。
 

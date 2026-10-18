@@ -1,10 +1,10 @@
 /**
  * 看板娘与 MCP 服务之间共用的类型定义（领域层契约）。
- * 工具清单单一来源是 shared/mcp-tools.json（Rust 侧同源加载）；
+ * 工具清单单一来源是 src/mcp/tools.json（Rust 侧同源加载）；
  * 事件契约与 src/tauri/src/state.rs 成对镜像，字段改动必须两侧同步。
  */
 
-import mcpTools from "../../../shared/mcp-tools.json";
+import mcpTools from "../../mcp/tools.json";
 
 /** 运行时工具清单（name/description/inputSchema/action/query，与 Rust 侧同源）。 */
 export const MCP_TOOLS = mcpTools;
@@ -12,7 +12,7 @@ export const MCP_TOOLS = mcpTools;
 /**
  * 动作表：本文件内唯一的手写点（值与类型同源）。
  * JSON 导入的字符串字面量会被 widen 成 string，无法直接派生字面量联合类型，
- * 因此联合类型由本常量派生，并在下方与 shared/mcp-tools.json 运行时互校。
+ * 因此联合类型由本常量派生，并在下方与 src/mcp/tools.json 运行时互校。
  */
 export const MASCOT_ACTIONS = [
   "play_motion",
@@ -35,7 +35,7 @@ export type MascotAction = (typeof MASCOT_ACTIONS)[number];
 const manifestActions = MCP_TOOLS.map((t) => t.action).slice().sort().join(",");
 const localActions = [...MASCOT_ACTIONS].slice().sort().join(",");
 if (manifestActions !== localActions) {
-  console.warn("[mascot] shared/mcp-tools.json 与 types.ts 动作表不一致", {
+  console.warn("[mascot] src/mcp/tools.json 与 types.ts 动作表不一致", {
     manifest: manifestActions,
     local: localActions,
   });

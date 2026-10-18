@@ -124,7 +124,7 @@ node cmd/client/test.mjs
 | `set_model` | `model: string` | 运行时切换模型档案（失败自动回滚，原模型不受影响） |
 | `list_models` | — | 列出可用模型档案（id / 模式 / 当前使用中） |
 
-> 工具定义的**单一来源**是 [`shared/mcp-tools.json`](./shared/mcp-tools.json)（Rust 与 TS 同源加载）；本表为文档镜像，以清单为准。
+> 工具定义的**单一来源**是 [`src/mcp/tools.json`](./src/mcp/tools.json)（Rust 与 TS 同源加载）；本表为文档镜像，以清单为准。
 > 真实 Live2D 模型可用动作/表情名取决于模型自带的文件；降级模式下是内置的一组示例名。
 > `set_model` 成功返回 `{ok:true, model, mode, modelFile}`，失败返回 `{ok:false, error}`（同时 `isError:true`）。
 
@@ -153,15 +153,16 @@ pet/
 │  │  │  ├─ speech.ts      说话时长（气泡与口型共用）
 │  │  │  └─ types.ts       前后端共用类型 + 动作表（与共享清单运行时互校）
 │  │  └─ ipc/events.ts     Tauri 事件通道（mascot:action 进 / mascot:result 出）
+│  ├─ mcp/
+│  │  └─ tools.json        MCP 工具清单（Rust/TS 单一来源）
 │  └─ tauri/               Rust 后端（原 src-tauri，cargo 包根）
 │     ├─ Cargo.toml
 │     ├─ src/lib.rs        Tauri 入口 + 启动 MCP 服务
 │     ├─ src/mcp/mod.rs    axum SSE MCP 服务（传输 + JSON-RPC 协议）
-│     ├─ src/mcp/tools.rs  工具清单加载 + tools/call 分发（读 shared/mcp-tools.json）
+│     ├─ src/mcp/tools.rs  工具清单加载 + tools/call 分发（读 src/mcp/tools.json）
 │     ├─ src/state.rs      共享状态 + 事件发射 + 结果回传（查询型 5s oneshot）
 │     ├─ tauri.conf.json   窗口配置（透明/置顶/无边框）
 │     └─ capabilities/     权限
-├─ shared/mcp-tools.json   MCP 工具清单（Rust/TS 单一来源）
 ├─ models/                 静态资源根（Vite publicDir）：模型目录 + 接入文档
 ├─ cmd/
 │  └─ client/

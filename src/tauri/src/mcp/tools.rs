@@ -1,6 +1,6 @@
 //! MCP 工具清单与分发。
 //!
-//! 单一来源是仓库根部的 shared/mcp-tools.json：
+//! 单一来源是仓库的 src/mcp/tools.json：
 //! 工具名/描述/参数 schema/动作路由（action、query）都从这里读取，
 //! TS 侧（src/frontend/core/types.ts）同源导入。新增工具只需改清单 + 补 dispatcher case。
 
@@ -34,8 +34,8 @@ static MANIFEST: OnceLock<Vec<ToolDef>> = OnceLock::new();
 #[allow(clippy::expect_used)] // 启动期 fail-fast 的受控例外，理由见上方文档注释
 fn manifest() -> &'static [ToolDef] {
     MANIFEST.get_or_init(|| {
-        serde_json::from_str(include_str!("../../../../shared/mcp-tools.json"))
-            .expect("shared/mcp-tools.json 不是合法工具清单")
+        serde_json::from_str(include_str!("../../../mcp/tools.json"))
+            .expect("src/mcp/tools.json 不是合法工具清单")
     })
 }
 
