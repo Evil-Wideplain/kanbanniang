@@ -70,6 +70,7 @@ export class Live2DMascot implements MascotController {
       view: canvas,
       transparent: true,
       autoStart: true,
+      // 画布铺满主窗口（看板娘窗口固定尺寸，无内嵌分栏）。
       resizeTo: window,
       antialias: true,
       backgroundAlpha: 0,

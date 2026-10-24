@@ -181,7 +181,8 @@ fn broadcast_settings(app: &AppHandle, next: &Settings) {
     }
 }
 
-/// 启动时把设置应用到运行态（主窗口置顶 + 开机自启；不透明度由主窗口读取设置自行应用）。
+/// 启动时把设置应用到运行态（主窗口置顶 + 开机自启；
+/// 不透明度由主窗口读取设置自行应用）。
 pub fn apply_startup(app: &AppHandle, settings: &Settings) {
     apply_always_on_top(app, settings.always_on_top);
     apply_autostart(app, settings.autostart);
