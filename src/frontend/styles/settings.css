@@ -37,12 +37,13 @@ body {
 /* 无系统边框：整页即一张圆角「手账纸」，圆角处透出桌面 */
 .settings {
   position: relative;
-  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
   padding: 22px 22px 20px;
   background: var(--settings-cream);
   border-radius: 18px;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
   scrollbar-width: thin;
   scrollbar-color: #e2cfc6 transparent;
 }
@@ -81,6 +82,7 @@ body {
 
 /* 自定义标题栏按钮：压在拖动条之上，保证可点 */
 .page-head {
+  flex: none;
   user-select: none;
 }
 
@@ -151,11 +153,22 @@ body {
   font-size: 12px;
 }
 
+/* 表单独立滚动：标题区固定，卡片滚出标题下方即被裁掉（负边距让滚动条贴到纸边） */
 #settings-form {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 16px;
-  margin-top: 16px;
+  min-height: 0;
+  margin: 0 -22px -20px;
+  padding: 16px 22px 20px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* 卡片不参与收缩：内容超高时滚动而不是压扁（旋转卡片需要保留自身高度） */
+#settings-form > * {
+  flex: none;
 }
 
 .card {
