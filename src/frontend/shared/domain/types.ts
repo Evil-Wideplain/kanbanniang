@@ -108,9 +108,9 @@ export interface RuntimeStatus {
 
 /** 看板娘当前状态（get_status 返回）。 */
 export interface MascotStatus {
-  mode: "live2d" | "fallback";
+  mode: "live2d";
   model: string | null;
-  /** 模型档案 id（如 "haru" / "fallback"），供 list_models 展示当前使用项。 */
+  /** 模型档案 id（如 "haru"），供 list_models 展示当前使用项。 */
   modelId?: string;
   expression: string;
   position: { x: number; y: number };
@@ -119,7 +119,7 @@ export interface MascotStatus {
 
 /** set_model 的结果信封（内嵌在 MascotResult.result 中回传）。 */
 export type SetModelOutcome =
-  | { ok: true; model: string; mode: "live2d" | "fallback"; modelFile: string | null; unchanged?: boolean }
+  | { ok: true; model: string; mode: "live2d"; modelFile: string | null; unchanged?: boolean }
   | { ok: false; error: string; current?: string; available?: string[] };
 
 /**
@@ -150,8 +150,8 @@ export interface ActionOutcome {
 }
 
 /**
- * 看板娘控制器接口：Live2D 实现与降级实现都遵循它，
- * 因此 MCP 事件分发逻辑与具体渲染方式解耦。
+ * 看板娘控制器接口：MCP 事件分发逻辑只依赖它，
+ * 因此与具体 Live2D 渲染实现解耦。
  */
 export interface MascotController {
   /**
@@ -167,7 +167,7 @@ export interface MascotController {
   moveTo(x: number, y: number): void;
   /** 回到待机。 */
   idle(): void;
-  /** 开关全屏视线跟随（窗口内跟随始终生效；仅 Live2D 实现有效，降级实现为空操作）。 */
+  /** 开关全屏视线跟随（窗口内跟随始终生效）。 */
   setGaze(enabled: boolean): void;
   /** 当前模型可用的动作组名。 */
   listMotions(): string[];

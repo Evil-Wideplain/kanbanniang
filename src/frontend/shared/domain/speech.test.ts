@@ -1,5 +1,5 @@
 /**
- * 领域纯函数单测：说话时长公式（气泡展示与降级口型共用）。
+ * 领域纯函数单测：说话时长公式（气泡展示用）。
  */
 import { describe, expect, it } from "vitest";
 import { speakDurationMs } from "./speech";

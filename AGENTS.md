@@ -34,14 +34,14 @@ sources: [.]
 
 | 目录 | 职责 |
 |------|------|
-| `src/frontend/` | 前端（feature+shared 分包：`app/` 入口、`shared/` 契约与 IPC、`mascot/`+`settings/`+`debug/` 功能域、`styles/`）：Live2D/降级渲染、MCP 指令分发、模型热切换、DOM 气泡、设置页 + 调试面板（调试面板仅开发构建）（细则 [[src/frontend/AGENTS.md]]） |
+| `src/frontend/` | 前端（feature+shared 分包：`app/` 入口、`shared/` 契约与 IPC、`mascot/`+`settings/`+`debug/` 功能域、`styles/`）：Live2D 渲染、MCP 指令分发、模型热切换、DOM 气泡、设置页 + 调试面板（调试面板仅开发构建）（细则 [[src/frontend/AGENTS.md]]） |
 | `src/tauri/` | Rust 后端：Tauri 应用装配 + axum MCP SSE 服务 + 设置持久化与端口热重启 / 窗口置顶 / 开机自启 / 窗口平滑移动 `move_window` / 调试命令 `mcp_debug_call`（细则 [[src/tauri/AGENTS.md]]） |
 | `.agents/skills/` | 内置 Skill：`architecture`（分层/契约/模式）、`comments`、`logging`、`crap-analysis`、`commit`、`agents-md`（按需加载） |
 | `src/mcp/tools.json` | MCP 工具契约单一来源（Rust 与 TS 同源加载） |
 | `cmd/` | MCP 冒烟测试脚本（`client/test.mjs`） |
 | `models/` | Live2D 模型资源（gitignore，不入库；见 `models/README.md`） |
 
-技术栈：Tauri 2（Windows WebView2）；Rust edition 2021 / MSRV 1.77 + axum；TypeScript（strict）+ Vite，无框架；pixi.js v6 + pixi-live2d-display（Live2D），Canvas 2D 降级。协议：MCP over SSE（JSON-RPC 2.0），默认 `127.0.0.1:7432/mcp/sse`（端口与启用状态可在设置页配置；关闭 MCP 后看板娘仍独立运行）。
+技术栈：Tauri 2（Windows WebView2）；Rust edition 2021 / MSRV 1.77 + axum；TypeScript（strict）+ Vite，无框架；pixi.js v6 + pixi-live2d-display（Live2D）。协议：MCP over SSE（JSON-RPC 2.0），默认 `127.0.0.1:7432/mcp/sse`（端口与启用状态可在设置页配置；关闭 MCP 后看板娘仍独立运行）。
 
 ## 核心链路
 
@@ -52,7 +52,7 @@ Agent（Claude Desktop 等） ──SSE / JSON-RPC──▶ Rust: axum MCP 服�
                                         WebView 前端（src/frontend）
                                                   │  查询型：mascot:result 回传（oneshot，5s 超时）
                                                   ▼
-                                     Live2D / 降级 控制器 → 看板娘响应
+                                     Live2D 控制器 → 看板娘响应
 ```
 
 ## 编码硬性规则（速记）

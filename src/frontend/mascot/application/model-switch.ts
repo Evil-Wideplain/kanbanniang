@@ -1,6 +1,7 @@
 /**
- * 模型管理器（应用层）：默认档案初始化（含静默降级）、运行时热切换与回滚。
+ * 模型管理器（应用层）：默认档案初始化、运行时热切换与回滚。
  * 切换遵循「先建后销、失败天然回滚」：新控制器建好才提交销毁旧的。
+ * 只管理 Live2D 模型；初始加载失败时保持「未加载」状态，可由 set_model 重试。
  */
 import type { MascotController, SetModelOutcome } from "@/shared/domain/types";
 import type { ModelProfile } from "@/shared/domain/profiles";
@@ -9,66 +10,60 @@ import {
   getProfile,
   MODEL_IDS,
   MODEL_PROFILES,
-  profileMode,
 } from "@/shared/domain/profiles";
-import { FallbackMascot } from "@/mascot/render/fallback";
 
-/** 模型生命周期：初始化（含静默降级）、运行时热切换、当前控制器访问。 */
+/** 模型生命周期：初始化、运行时热切换、当前控制器访问。 */
 export interface ModelManager {
   /** 运行时切换模型：游离画布上先建好新控制器，失败保留旧状态（天然回滚）。 */
   setModel(id: string): Promise<SetModelOutcome>;
-  /** 当前档案 id。 */
+  /** 当前档案 id；未加载时为空串。 */
   currentModelId(): string;
-  /** 当前控制器（分发指令时读取，切换后为新实例）。 */
-  controller(): MascotController;
+  /** 当前控制器（未加载时为 null）。 */
+  controller(): MascotController | null;
   /** 开关视线跟随：作用于当前控制器并记住，供后续热切换沿用。 */
   setGaze(enabled: boolean): void;
 }
 
-/** 按档案创建控制器：Live2D 档案动态加载实现，降级档案直接用 Canvas。失败向上抛。 */
+/** 按档案创建 Live2D 控制器。失败向上抛。 */
 async function createController(
   canvas: HTMLCanvasElement,
   profile: ModelProfile,
 ): Promise<MascotController> {
-  if (!profile.config) return new FallbackMascot(canvas);
   const { Live2DMascot } = await import("@/mascot/render/live2d");
   return Live2DMascot.create(canvas, profile);
 }
 
-/** 创建模型管理器：按指定档案（默认 `DEFAULT_MODEL_ID`）初始化控制器（失败静默降级到 Canvas）。 */
+/** 创建模型管理器：按指定档案（默认 `DEFAULT_MODEL_ID`）初始化控制器。 */
 export async function createModelManager(
   initialCanvas: HTMLCanvasElement,
   initialModelId: string = DEFAULT_MODEL_ID,
   initialGaze: boolean = true,
 ): Promise<ModelManager> {
-  let controller: MascotController;
-  let currentModelId = "fallback";
+  let controller: MascotController | null = null;
+  let currentModelId = "";
   let swapping = false;
   let gazeEnabled = initialGaze;
 
   // 1) 按初始档案初始化控制器（未知/空 id 回退默认档案）
-  const profile = getProfile(initialModelId) ?? getProfile(DEFAULT_MODEL_ID)!;
-  if (profile.config) {
+  const profile = getProfile(initialModelId) ?? getProfile(DEFAULT_MODEL_ID);
+  if (profile) {
     try {
       controller = await createController(initialCanvas, profile);
       currentModelId = profile.id;
       console.info("[mascot] Live2D 模式已启用:", profile.name);
     } catch (err) {
-      // 启动阶段保持"静默降级"（应用总能跑起来）；
-      // 显式 set_model 切换则严格回滚，见 setModel。
-      console.warn("[mascot] Live2D 加载失败，回退到降级模式：", err);
-      controller = new FallbackMascot(initialCanvas);
+      // 启动阶段失败不阻断应用：保持未加载状态，之后可用 set_model 重试。
+      console.error("[mascot] Live2D 加载失败，看板娘未加载：", err);
     }
   } else {
-    controller = new FallbackMascot(initialCanvas);
-    console.info("[mascot] 降级模式（未配置模型）");
+    console.error("[mascot] 没有可用模型档案（models/ 为空？），看板娘未加载");
   }
 
   // 暴露到全局，方便手动调试（每次切换后刷新）
   (window as any).__mascot = controller;
 
-  // 应用视线跟随设置到初始控制器（Live2D 生效；降级为空实现）
-  controller.setGaze(gazeEnabled);
+  // 应用视线跟随设置到初始控制器
+  controller?.setGaze(gazeEnabled);
 
   // 2) 运行时切换模型：先在游离画布上建好新控制器，
   //    成功才提交；任何一步失败都保留旧状态（天然回滚）。
@@ -94,8 +89,8 @@ export async function createModelManager(
       return {
         ok: true,
         model: id,
-        mode: profileMode(target),
-        modelFile: target.config?.modelFile ?? null,
+        mode: "live2d",
+        modelFile: target.config.modelFile,
         unchanged: true,
       };
     }
@@ -120,7 +115,7 @@ export async function createModelManager(
 
       // ② 提交：销毁旧控制器 → 原子替换画布 → 切换引用
       try {
-        controller.destroy();
+        controller?.destroy();
       } catch (e) {
         console.warn("[mascot] 旧控制器销毁失败:", e);
       }
@@ -133,14 +128,13 @@ export async function createModelManager(
       console.info("[mascot] 模型切换完成", {
         from,
         to: target.id,
-        mode: profileMode(target),
       });
 
       return {
         ok: true,
         model: target.id,
-        mode: profileMode(target),
-        modelFile: target.config?.modelFile ?? null,
+        mode: "live2d",
+        modelFile: target.config.modelFile,
       };
     } finally {
       swapping = false;
@@ -153,7 +147,7 @@ export async function createModelManager(
     controller: () => controller,
     setGaze: (enabled: boolean) => {
       gazeEnabled = enabled;
-      controller.setGaze(enabled);
+      controller?.setGaze(enabled);
     },
   };
 }

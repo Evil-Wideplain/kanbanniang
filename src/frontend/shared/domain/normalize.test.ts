@@ -1,5 +1,5 @@
 /**
- * 领域纯函数单测：动作 / 表情名归一化（两个控制器实现与档案别名映射共用）。
+ * 领域纯函数单测：动作 / 表情名归一化（Live2D 控制器与档案别名映射共用）。
  */
 import { describe, expect, it } from "vitest";
 import { norm } from "./normalize";

@@ -4,7 +4,31 @@
     "file": "Haru.model3.json"
   },
   {
+    "dir": "Hiyori",
+    "file": "Hiyori.model3.json"
+  },
+  {
+    "dir": "Mao",
+    "file": "Mao.model3.json"
+  },
+  {
+    "dir": "Mark",
+    "file": "Mark.model3.json"
+  },
+  {
     "dir": "Natori",
     "file": "Natori.model3.json"
+  },
+  {
+    "dir": "Ren",
+    "file": "Ren.model3.json"
+  },
+  {
+    "dir": "Rice",
+    "file": "Rice.model3.json"
+  },
+  {
+    "dir": "Wanko",
+    "file": "Wanko.model3.json"
   }
 ]

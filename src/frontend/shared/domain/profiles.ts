@@ -31,8 +31,8 @@ export interface ModelProfile {
   /** 展示名。 */
   name: string;
   description?: string;
-  /** null = 降级 Canvas 模式。 */
-  config: ModelConfig | null;
+  /** Live2D 模型配置（档案只描述真实模型）。 */
+  config: ModelConfig;
   /** 语义别名：调用名 → 该模型真实动作组名（键按归一化匹配）。 */
   motionAliases?: Record<string, string>;
   /** 语义别名：调用名 → 该模型真实表情名（键按归一化匹配）。 */
@@ -97,28 +97,15 @@ function buildLive2dProfiles(): ModelProfile[] {
   });
 }
 
-/** 全部可切换档案：Live2D（动态发现）+ 降级 Canvas。 */
-export const MODEL_PROFILES: ModelProfile[] = [
-  ...buildLive2dProfiles(),
-  {
-    id: "fallback",
-    name: "降级看板娘",
-    description: "纯 Canvas 动画，无需 Live2D SDK",
-    config: null,
-  },
-];
+/** 全部可切换档案：由 `models/` 扫描结果动态生成。 */
+export const MODEL_PROFILES: ModelProfile[] = buildLive2dProfiles();
 
-/** 启动时加载的默认档案 id（首个 Live2D 模型；无模型则降级）。 */
-export const DEFAULT_MODEL_ID = MODEL_PROFILES[0]?.id ?? "fallback";
+/** 启动时加载的默认档案 id（首个模型；没有模型时为空串）。 */
+export const DEFAULT_MODEL_ID = MODEL_PROFILES[0]?.id ?? "";
 
 /** 全部档案 id（模型切换错误信息与校验复用；只在此处派生一次）。 */
 export const MODEL_IDS: string[] = MODEL_PROFILES.map((p) => p.id);
 
 export function getProfile(id: string): ModelProfile | undefined {
   return MODEL_PROFILES.find((p) => p.id === id);
-}
-
-/** 档案渲染模式：有 config 为 live2d，否则降级 Canvas。 */
-export function profileMode(profile: ModelProfile): "live2d" | "fallback" {
-  return profile.config ? "live2d" : "fallback";
 }

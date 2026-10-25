@@ -22,7 +22,7 @@ function cmd(action: MascotAction, params: Record<string, unknown> = {}): Mascot
 /** 构造控制器替身，可覆盖单个方法（默认行为足够跑通用例）。 */
 function fakeController(over: Partial<MascotController> = {}): MascotController {
   const status: MascotStatus = {
-    mode: "fallback",
+    mode: "live2d",
     model: null,
     expression: "neutral",
     position: { x: 0.5, y: 0.9 },
@@ -44,7 +44,7 @@ function fakeController(over: Partial<MascotController> = {}): MascotController 
 }
 
 /** 同步动作直接返回结果；异步动作（move / set_model）返回 Promise，统一 await。 */
-function run(action: MascotAction, params: Record<string, unknown>, c: MascotController, ctx?: CommandCtx) {
+function run(action: MascotAction, params: Record<string, unknown>, c: MascotController | null, ctx?: CommandCtx) {
   return Promise.resolve(handleCommand(cmd(action, params), c, ctx));
 }
 
@@ -72,7 +72,7 @@ describe("handleCommand 动作型", () => {
   it("speak 先走气泡回调，再驱动控制器", async () => {
     const order: string[] = [];
     const c = fakeController({ speak: () => order.push("controller") });
-    await run("speak", { text: "你好" }, c, { showBubble: () => order.push("bubble"), setModel: async () => ({ ok: true, model: "", mode: "fallback", modelFile: null }), currentModelId: () => "fallback" });
+    await run("speak", { text: "你好" }, c, { showBubble: () => order.push("bubble"), setModel: async () => ({ ok: true, model: "", mode: "live2d", modelFile: null }), currentModelId: () => "" });
     expect(order).toEqual(["bubble", "controller"]);
   });
 
@@ -106,7 +106,7 @@ describe("handleCommand 查询型", () => {
     expect(res.result).toEqual(st);
   });
 
-  it("list_models 含降级档案，current 来自控制器状态", async () => {
+  it("list_models 只含 Live2D 档案，current 来自控制器状态", async () => {
     const c = fakeController({ status: () => ({ ...fakeController().status(), modelId: "haru" }) });
     const res = (await run("list_models", {}, c)).result as {
       current: string;
@@ -114,7 +114,8 @@ describe("handleCommand 查询型", () => {
       models: { id: string; mode: string }[];
     };
     expect(res.current).toBe("haru");
-    expect(res.models.some((m) => m.id === "fallback" && m.mode === "fallback")).toBe(true);
+    expect(res.models.every((m) => m.mode === "live2d")).toBe(true);
+    expect(res.models.some((m) => m.id === "fallback")).toBe(false);
   });
 });
 
@@ -126,7 +127,7 @@ describe("handleCommand 异步 / 失败路径", () => {
   });
 
   it("move 透传窗口移动结果，异常转 ok=false 信封", async () => {
-    const okCtx = { setModel: async () => ({ ok: true, model: "", mode: "fallback", modelFile: null }), currentModelId: () => "fallback", moveWindow: async () => ({ x: 0.1, y: 0.2, physicalX: 0, physicalY: 0, clamped: false, superseded: false }) } as CommandCtx;
+    const okCtx = { setModel: async () => ({ ok: true, model: "", mode: "live2d", modelFile: null }), currentModelId: () => "", moveWindow: async () => ({ x: 0.1, y: 0.2, physicalX: 0, physicalY: 0, clamped: false, superseded: false }) } as CommandCtx;
     const okRes = await run("move", { x: 0.1, y: 0.2 }, fakeController(), okCtx);
     expect(okRes.result).toMatchObject({ x: 0.1, superseded: false });
 
@@ -163,5 +164,13 @@ describe("handleCommand 异步 / 失败路径", () => {
     });
     const res = await run("play_motion", { motion: "wave" }, c);
     expect(res).toEqual({ id: "req-1", ok: false, result: null, error: "控制器异常" });
+  });
+
+  it("未加载看板娘时动作回失败，但 set_model 仍可恢复", async () => {
+    const res = await run("play_motion", { motion: "wave" }, null);
+    expect(res).toEqual({ id: "req-1", ok: false, result: null, error: "看板娘未加载（没有可用 Live2D 模型）" });
+
+    const ctx = { setModel: async () => ({ ok: true, model: "haru", mode: "live2d", modelFile: "Haru.moc3" }), currentModelId: () => "" } as CommandCtx;
+    expect((await run("set_model", { model: "haru" }, null, ctx)).result).toMatchObject({ ok: true, model: "haru" });
   });
 });

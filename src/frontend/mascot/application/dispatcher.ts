@@ -10,7 +10,7 @@ import type {
   SetModelOutcome,
   WindowMoveOutcome,
 } from "@/shared/domain/types";
-import { DEFAULT_MODEL_ID, MODEL_PROFILES, profileMode } from "@/shared/domain/profiles";
+import { DEFAULT_MODEL_ID, MODEL_PROFILES } from "@/shared/domain/profiles";
 
 /**
  * 指令分发所需的切换上下文（由 main.ts 注入，dispatcher 保持与 DOM 解耦）。
@@ -36,13 +36,14 @@ export interface CommandCtx {
  */
 export function handleCommand(
   cmd: MascotCommand,
-  c: MascotController,
+  c: MascotController | null,
   ctx?: CommandCtx,
 ): MascotResult | Promise<MascotResult> {
   const p = cmd.params ?? {};
   try {
     switch (cmd.action) {
       case "play_motion": {
+        if (!c) return notReady(cmd.id);
         const requested = String(p.motion ?? p.name ?? "idle");
         const outcome = c.motion(
           requested,
@@ -52,12 +53,14 @@ export function handleCommand(
         return okValue(cmd.id, outcome);
       }
       case "set_expression": {
+        if (!c) return notReady(cmd.id);
         const requested = String(p.expression ?? p.name ?? "neutral");
         const outcome = c.expression(requested);
         logOutcome("set_expression", requested, outcome);
         return okValue(cmd.id, outcome);
       }
       case "speak": {
+        if (!c) return notReady(cmd.id);
         const text = String(p.text ?? "");
         console.info("[mascot] speak 气泡展示", { chars: text.length });
         ctx?.showBubble?.(text);
@@ -84,6 +87,7 @@ export function handleCommand(
           );
       }
       case "move_in_window": {
+        if (!c) return notReady(cmd.id);
         const x = Number(p.x ?? 0.5);
         const y = Number(p.y ?? 0.9);
         console.info("[mascot] move_in_window 窗口内移动", { x, y });
@@ -91,33 +95,36 @@ export function handleCommand(
         return okValue(cmd.id, "ok");
       }
       case "set_idle":
+        if (!c) return notReady(cmd.id);
         console.info("[mascot] set_idle 回到待机");
         c.idle();
         return okValue(cmd.id, "ok");
       case "list_motions": {
+        if (!c) return notReady(cmd.id);
         const motions = c.listMotions();
         console.info("[mascot] list_motions 返回", { count: motions.length });
         return okValue(cmd.id, motions);
       }
       case "list_expressions": {
+        if (!c) return notReady(cmd.id);
         const expressions = c.listExpressions();
         console.info("[mascot] list_expressions 返回", { count: expressions.length });
         return okValue(cmd.id, expressions);
       }
       case "get_status": {
+        if (!c) return notReady(cmd.id);
         const st = c.status();
         console.info("[mascot] get_status 快照", { mode: st.mode, modelId: st.modelId ?? null });
         return okValue(cmd.id, st);
       }
       case "list_models": {
-        const st = c.status();
-        const current = st.modelId ?? ctx?.currentModelId() ?? null;
+        const current = c?.status().modelId || ctx?.currentModelId() || null;
         const models = MODEL_PROFILES.map((p2) => ({
           id: p2.id,
           name: p2.name,
           description: p2.description ?? null,
-          mode: profileMode(p2),
-          modelFile: p2.config?.modelFile ?? null,
+          mode: "live2d",
+          modelFile: p2.config.modelFile,
           isDefault: p2.id === DEFAULT_MODEL_ID,
         }));
         console.info("[mascot] list_models 返回", { count: models.length, current });
@@ -166,6 +173,11 @@ function logOutcome(kind: string, requested: string, outcome: ActionOutcome): vo
 
 function okValue(id: string, result: unknown): MascotResult {
   return { id, ok: true, result };
+}
+
+/** 看板娘未加载（启动时无模型或 Live2D 加载失败）时的统一失败结果。 */
+function notReady(id: string): MascotResult {
+  return fail(id, "看板娘未加载（没有可用 Live2D 模型）");
 }
 
 function fail(id: string, error: string): MascotResult {

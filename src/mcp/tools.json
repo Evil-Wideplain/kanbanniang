@@ -93,20 +93,20 @@
   },
   {
     "name": "set_model",
-    "description": "运行时切换看板娘模型（Live2D 模型间热切换，或切到降级模式）。返回 {ok:true,model,mode,modelFile} 或 {ok:false,error}；失败时原模型保持不变。可用 id 见 list_models。",
+    "description": "运行时切换看板娘模型（Live2D 模型间热切换）。返回 {ok:true,model,mode,modelFile} 或 {ok:false,error}；失败时原模型保持不变。可用 id 见 list_models。",
     "action": "set_model",
     "query": true,
     "inputSchema": {
       "type": "object",
       "properties": {
-        "model": { "type": "string", "description": "模型档案 id，如 \"haru\" / \"natori\" / \"fallback\"" }
+        "model": { "type": "string", "description": "模型档案 id，如 \"haru\" / \"natori\"" }
       },
       "required": ["model"]
     }
   },
   {
     "name": "list_models",
-    "description": "列出可用的看板娘模型档案：id、名称、渲染模式（live2d/fallback）、主模型文件、是否默认、当前使用中。",
+    "description": "列出可用的看板娘模型档案：id、名称、渲染模式、主模型文件、是否默认、当前使用中。",
     "action": "list_models",
     "query": true,
     "inputSchema": { "type": "object", "properties": {} }
