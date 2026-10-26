@@ -14,6 +14,7 @@ use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 
 use super::sse::{post_handler, sse_handler};
+use super::streamable;
 use super::AppState;
 
 /// 运行中的 MCP 服务句柄：持有优雅关闭信号与后台任务，供重启时收旧服务。
@@ -64,12 +65,24 @@ where
     F: Future<Output = ()> + Send + 'static,
 {
     let app = Router::new()
+        // 旧版 SSE 传输：GET 建流 + POST 投递消息。
         .route("/mcp/sse", get(sse_handler))
         .route("/mcp/messages", post(post_handler))
+        // Streamable HTTP 传输：单端点承载 JSON-RPC（DSH 的官方 MCP 客户端使用）。
+        .route(
+            "/mcp",
+            get(streamable::get_handler)
+                .post(streamable::post_handler)
+                .delete(streamable::delete_handler)
+                .options(streamable::options_handler),
+        )
+        // 探活：DSH 插件启动前据此确认应用与 MCP 已就绪。
+        .route("/health", get(streamable::health_handler))
         .with_state(state);
 
     info!(
-        "[mcp] MCP SSE 服务已启动: http://{}/mcp/sse",
+        "[mcp] MCP 服务已启动: SSE http://{}/mcp/sse · Streamable HTTP http://{}/mcp",
+        listener.local_addr()?,
         listener.local_addr()?
     );
     axum::serve(listener, app)

@@ -63,8 +63,10 @@ fn rpc_initialize(req: &Value) -> Value {
     );
     json!({
         "protocolVersion": "2024-11-05",
-        "capabilities": { "tools": {} },
-        "serverInfo": { "name": "kanban-mascot", "version": "0.1.0" }
+        // listChanged: 工具清单在编译期固定，声明 true 只是保持协议惯例；
+        // 真正新增工具需要重新构建并重启应用。
+        "capabilities": { "tools": { "listChanged": true } },
+        "serverInfo": { "name": "kanban-mascot", "version": env!("CARGO_PKG_VERSION") }
     })
 }
 
@@ -112,7 +114,8 @@ mod tests {
     fn rpc_initialize_reads_client_info() {
         let req = json!({ "params": { "clientInfo": { "name": "claude", "version": "1.2" } } });
         let v = rpc_initialize(&req);
-        assert_eq!(v["capabilities"]["tools"], json!({}));
+        assert_eq!(v["capabilities"]["tools"]["listChanged"], true);
+        assert_eq!(v["serverInfo"]["version"], env!("CARGO_PKG_VERSION"));
     }
 
     #[test]
