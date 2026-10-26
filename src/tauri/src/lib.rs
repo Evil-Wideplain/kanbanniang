@@ -79,6 +79,16 @@ pub fn run() {
                 );
             }
 
+            // 开发构建（`tauri dev`，或用 `cargo build` 直接编）会把前端指向 devUrl：
+            // 此时没有 Vite dev server 就是空白窗口，且前端不回 MCP（查询型工具 5s 超时），
+            // 表现为「插件拉起了看板娘但看不到角色」。发布与 DSH 插件拉起的二进制必须由
+            // `npm run tauri:build`（make build）产出，故显式告警，避免再次静默白屏。
+            if cfg!(dev) {
+                log::warn!(
+                    "[boot] 当前为开发构建：前端加载 devUrl，需 Vite dev server 同时运行；发布请用 npm run tauri:build"
+                );
+            }
+
             // 读取持久化设置（文件缺失/损坏回退默认值），随后托管给设置命令。
             let settings = config::SettingsStore::load(&handle);
 

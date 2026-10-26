@@ -28,7 +28,7 @@ sources: [.]
 | `node cmd/client/test.mjs` | MCP 冒烟测试（旧版 SSE 兼容通道，需应用已启动）；协议/工具改动必跑 |
 | `node cmd/client/test-streamable.mjs` | MCP 冒烟测试（Streamable HTTP 主路径，零依赖，需应用已启动） |
 | `npm run plugin:build` | 编译 DSH 宿主插件（`src/plugin` → `lib/`） |
-| `npm run plugin:install` | 安装到 DSH desktop profile（自动 build；需已 `make build`） |
+| `npm run plugin:install` | 构建应用本体（`tauri build --no-bundle`）+ 编译插件宿主半侧 + 注册到 DSH desktop profile；`--no-build` 跳过构建 |
 | `npm run plugin:uninstall` | 从 DSH desktop profile 卸载 |
 | `cargo check --all-targets` | Rust 编译快速检查（workdir: `src/tauri`） |
 | `make help / dev / build / test` | Makefile 快捷入口（`check` / `lint` / `verify` 见上） |
@@ -80,6 +80,7 @@ DSH 启动 → src/plugin 宿主插件（读 settings.json 端口 → provide ma
 - MCP 端点单一来源：看板娘 `settings.json` 的 `mcpEnabled` / `mcpPort`（插件读取）；`cordis.patch.yml` 只声明依赖与兜底，不得再写一份端口；插件通过 `mascotStartup` 服务把 URL 交给 MCP 客户端行。宿主插件**任何失败路径都必须 `ctx.provide`**，否则 inject 该服务的行会 PENDING 并导致 DSH 启动失败。
 - 注释与日志一律中文、带模块前缀；运行日志必须可查（Rust 经 `log::info!`/`log::warn!`/`log::error!` 门面、由 tauri-plugin-log 双写 stderr+文件，前端 `[mascot]` 日志经官方插件 JS 桥自动转发落盘，DSH 宿主插件日志双写 `<DSH_HOME>/kanbanniang/plugin.log`）；Rust 错误用 `Result` 传播，禁裸 `unwrap` / `expect` / `panic`（lint 强制，受控例外仅 `tools.rs::manifest`）。
 - DSH 宿主插件（`src/plugin/`）不 import DSH 内部包（安装目录无法保证解析）；只按用到的能力镜像 Cordis 契约（`dsh.ts`）。协议字段（tools.json）仍是唯一工具来源，插件不重复定义工具。
+- 发布构建只走 `npm run tauri:build`（= `make build`）：`cargo build` / `cargo build --release` 编出的二进制带 `cfg(dev)`，前端加载 `devUrl` 而非内嵌资源，被 DSH 插件拉起后是空白窗口、前端不回 MCP（查询型工具 5s 超时），exe 体积也只有正常产物的约 1/6。`lib.rs` 启动会打 `[boot] 当前为开发构建…` 告警兜底，看到它即说明构建方式错了。
 - 提交信息：每次生成 commit msg **必须**加载并遵循 skill `commit`（Conventional Commits，`type(scope): 中文 subject`，正文解释「为什么」）；未获明确要求不提交。
 - 完整规则按需加载：skill `architecture` / `comments` / `logging` / `crap-analysis` / `commit`。
 

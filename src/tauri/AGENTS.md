@@ -128,7 +128,7 @@ lint 配置唯一来源：`Cargo.toml` 的 `[lints]` 表与 `rustfmt.toml`。启
 
 - 指标：`CRAP = CC² × (1 - cov)³ + CC`（CC 为圈复杂度，cov 为覆盖率），挑出「复杂且缺测试」的函数；本项目 Rust 测试（`config` / `mcp` 单测，见 `cargo test --lib`）尚未接入覆盖率工具，无覆盖率数据按 0% 保守计（结果偏严）。
 - 基线（2026-10-18，加入应用内调试面板后）：80 个函数，0 个超阈值 30；最高档 CRAP 30（CC 5）：`save_settings`、`reconcile_mcp`、`apply_autostart`、`config::save`、`read_settings`、`rpc_result`；第二档 CRAP 20（CC 4）：`switch_model_if_changed`、`respond_sync`、`post_handler`、`AppStateInner::await_result`、`on_menu_event`、`aux_window`、`toggle_window`；重构热点时以分数不继续上升为约束。
-- 说明：此前几轮已把 `tray::init`（72→12）、`save_settings`（240→30）、`handle_rpc`（110→12）、`call_tool`（42→≤6）、`AppStateInner::dispatch`（42→12）、`toggle_window`（42→20）、`level_name`（42→<6）等拆到阈值以下（手法：抽出 `build_menu`/`apply_icon`/`respond_sync`/`run_query`/`await_result`/`route`/`aux_window` 等单一职责函数；`on_menu_event` 因调试菜单并入而改走 `menu_specs` 清单 + `aux_window` 解析，从 30 降回 20）。剩余 CRAP 30 一档的分支多为其语义本身（协议分发 / 校验 / 平台 API 读写），继续拆收益递减。真正的降分杠杆是补测试（cov 上升），但本机 GNU 工具链的测试 exe 存在链接失败（见 `.cargo/config.toml` 已知问题），暂无法本地跑覆盖率。
+- 说明：此前几轮已把 `tray::init`（72→12）、`save_settings`（240→30）、`handle_rpc`（110→12）、`call_tool`（42→≤6）、`AppStateInner::dispatch`（42→12）、`toggle_window`（42→20）、`level_name`（42→<6）等拆到阈值以下（手法：抽出 `build_menu`/`apply_icon`/`respond_sync`/`run_query`/`await_result`/`route`/`aux_window` 等单一职责函数；`on_menu_event` 因调试菜单并入而改走 `menu_specs` 清单 + `aux_window` 解析，从 30 降回 20）。剩余 CRAP 30 一档的分支多为其语义本身（协议分发 / 校验 / 平台 API 读写），继续拆收益递减。真正的降分杠杆是补测试（cov 上升）；此前记的「测试 exe 链接失败」已查明并修复——不是链接器故障，而是测试目标缺少 `tauri-build` 生成的 Windows 资源（应用清单），运行期解析 `comctl32!TaskDialogIndirect`（仅 v6 导出）失败，进程加载阶段即 `0xC0000139`；现由 `build.rs::link_windows_resource_to_tests` 补齐，`cargo test --lib` 可正常执行（覆盖率工具 llvm-cov 尚未接入）。
 - 提示：新增托盘菜单项时走 `menu_specs()` 清单 + `aux_window()` 映射，不要向 `build_menu` / `on_menu_event` 累加 `?` 与 match 臂（会导致 CRAP 越过 30）。
 - 完整用法（Windows 安装、覆盖率接入、CLI 选项与退出码、修复指引）见 [.agents/skills/crap-analysis/SKILL.md](../../.agents/skills/crap-analysis/SKILL.md)。
 
@@ -155,6 +155,8 @@ lint 配置唯一来源：`Cargo.toml` 的 `[lints]` 表与 `rustfmt.toml`。启
 - 常量集中定义（如 `mcp::DEFAULT_MCP_PORT`、查询超时 5s）；端口以设置为准，魔法值必须附中文注释（如 SSE 缓冲 64）。
 - 依赖变更必须同步 `Cargo.lock`，并跑一次门禁命令。
 - 日志按级别走 `log` 门面（`log::info!` / `log::warn!` / `log::error!`），由 `log_setup.rs::plugin()` 注册的 tauri-plugin-log 双写 stderr + 文件（落盘位置与行格式见 References），禁止直接 `eprintln!` / `println!`；注释与日志其余要求遵全局规范（见 References）。
+- 构建口径：`target/release/kanbanniang.exe` 只能由 `npm run tauri:build`（= `make build`）产出。用 `cargo build` / `cargo build --release` 直接编得到的二进制带 `cfg(dev)`，前端走 `devUrl`（Vite dev server），被 DSH 插件拉起后是空白窗口、前端不回 MCP（查询型工具 5s 超时），且 exe 只有 ~4MB（内嵌资源约 23MB）。`lib.rs` 启动时会打 `[boot] 当前为开发构建…` 告警兜底——日志里出现它即说明构建方式错了。
+- 测试目标也要链接 Windows 资源：`tauri-build` 只经 `cargo:rustc-link-arg-bins` 把 `libresource.a`（含 Common-Controls v6 应用清单）发给 bin，测试目标没清单时 `comctl32!TaskDialogIndirect`（仅 v6 导出）解析失败，进程加载期即 `0xC0000139`（表现为 `cargo test --lib` 退出码 `-1073741511`、无任何用例输出）。`build.rs::link_windows_resource_to_tests` 用 `cargo:rustc-link-arg` 补齐；注意 `cargo:rustc-link-arg-tests` 对 lib 单测 harness 无效（cargo 会报「没有 test target」）。
 
 ## 依赖关系
 
