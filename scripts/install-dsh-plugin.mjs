@@ -31,7 +31,7 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 /** 解析命令行参数。 */
 function parseArgs(argv) {
-  const options = { profile: 'desktop', remove: false, dryRun: false, help: false };
+  const options = { profile: 'desktop', remove: false, dryRun: false, noBuild: false, help: false };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--profile') {
@@ -41,6 +41,8 @@ function parseArgs(argv) {
       index += 1;
     } else if (arg === '--remove') {
       options.remove = true;
+    } else if (arg === '--no-build') {
+      options.noBuild = true;
     } else if (arg === '--dry-run') {
       options.dryRun = true;
     } else if (arg === '--help' || arg === '-h') {
@@ -59,9 +61,12 @@ function printHelp() {
 选项:
   --profile <name>  目标 DSH profile（默认 desktop）
   --remove          从 profile 卸载本插件
+  --no-build        跳过应用构建，沿用 target/release 现有产物
   --dry-run         只打印将执行的命令/改动
   -h, --help        显示帮助
 
+安装会先构建应用本体（tauri build --no-bundle），因为插件以 link: 方式安装、
+运行时直接拉起仓库里的 target/release 产物，不做 exe 打包或复制。
 安装完成后需完全退出并重启 DSH 桌面端；DSH 启动时会拉起看板娘，
 并以 mcp__kanbanniang__* 的形式把工具暴露给模型。
 `);
@@ -157,6 +162,59 @@ function ensurePluginBuilt() {
   if (result.status !== 0) fail('TypeScript 编译失败，安装中止');
 }
 
+/** 看板娘应用 Release 产物相对仓库根的路径。 */
+const APP_EXE = join(
+  'target',
+  'release',
+  process.platform === 'win32' ? 'kanbanniang.exe' : 'kanbanniang',
+);
+
+/**
+ * 构建应用本体（release exe）。
+ *
+ * 插件以 `link:` 方式安装，运行时直接拉起仓库里的 `target/release` 产物，自身不打包、
+ * 不复制 exe——所以「安装」必须顺带把应用构建好，否则插件拉起的是上一次遗留的文件。
+ * 这个坑已经踩过：遗留的 dev 构建（前端走 devUrl）在界面白屏的同时后端仍然健康，
+ * 探活一路通过，最终表现成「插件拉起了看板娘，但看不到角色」。
+ *
+ * 用 `--no-bundle` 跳过 MSI/NSIS：插件只需要 exe，出安装包纯属浪费时间。
+ */
+function buildApp() {
+  const cli = join(REPO_ROOT, 'node_modules', '@tauri-apps', 'cli', 'tauri.js');
+  if (!existsSync(cli)) {
+    fail('缺少 @tauri-apps/cli，请先在仓库根执行 npm install');
+  }
+  process.stdout.write('› 构建应用本体（tauri build --no-bundle，含 Vite 构建与资源内嵌）...\n');
+  const result = spawnSync(process.execPath, [cli, 'build', '--no-bundle'], {
+    cwd: REPO_ROOT,
+    stdio: 'inherit',
+  });
+  if (result.status !== 0) {
+    fail('应用构建失败，安装中止；如确要沿用现有产物，可加 --no-build 重试');
+  }
+  if (!existsSync(join(REPO_ROOT, APP_EXE))) {
+    fail(`构建完成但未见可执行文件: ${join(REPO_ROOT, APP_EXE)}`);
+  }
+}
+
+/**
+ * 确保应用产物可用：默认现场构建，`--no-build` 时只校验存在性。
+ *
+ * @param options - 已解析参数。
+ */
+function ensureAppBuilt(options) {
+  const exePath = join(REPO_ROOT, APP_EXE);
+  if (!options.noBuild) {
+    buildApp();
+    return;
+  }
+  if (!existsSync(exePath)) {
+    fail(`--no-build 但未找到应用产物: ${exePath}\n请先执行 npm run tauri:build`);
+  }
+  process.stdout.write(`› 跳过构建，沿用现有产物: ${exePath}\n`);
+}
+
+
 /** 读取 profile 清单；不存在时返回 undefined（由调用方给出提示）。 */
 function readProfileManifest(profileDir) {
   const manifestPath = join(profileDir, 'package.json');
@@ -237,6 +295,7 @@ function main() {
       );
       return;
     }
+    if (!options.remove) ensureAppBuilt(options);
     manualInstall(profileDir, manifest, options);
     return;
   }
@@ -246,25 +305,46 @@ function main() {
   if (options.remove) args.push(PACKAGE_NAME);
 
   if (options.dryRun) {
+    if (!options.remove) {
+      process.stdout.write(
+        options.noBuild
+          ? `› 跳过应用构建，沿用 ${join(REPO_ROOT, APP_EXE)}\n`
+          : `› 构建应用本体: "${process.execPath}" ${join(
+              'node_modules',
+              '@tauri-apps',
+              'cli',
+              'tauri.js',
+            )} build --no-bundle\n`,
+      );
+    }
     process.stdout.write(`› ${cli} ${args.join(' ')}\n`);
     return;
   }
 
   ensurePluginBuilt();
+  if (!options.remove) ensureAppBuilt(options);
   process.stdout.write(`› 调用桌面端插件管理器: ${args.join(' ')}\n`);
   const result = runDesktopCli(cli, args);
   if (result.error !== undefined) fail(`桌面端 CLI 执行失败: ${result.error.message}`);
   if (result.status !== 0) fail(`插件安装命令退出码 ${String(result.status)}，安装未完成`);
 
-  // 安装后复查落盘结果：依赖 + bundles 必须同时命中（插件管理器的 reconcile 会补齐 bundles）。
+  // 安装后复查落盘结果。
+  //
+  // 硬要求只有 dependencies 一项：桌面端本版按「依赖里带 `dsh.bundle` 元数据的包」加载插件层，
+  // 实测 bundles 数组里没有本包也会在启动时激活（plugin.log 可见 `[kanbanniang] 激活`）。
+  // 因此 bundles 缺失只提示、不判失败——早期把两者都当硬要求，会让正常的安装以退出码 1 收场。
   const updated = readProfileManifest(profileDir);
   const installedDependency = updated?.dependencies?.[PACKAGE_NAME];
   const inBundles = (updated?.dsh?.profile?.bundles ?? []).includes(PACKAGE_NAME);
-  if (!options.remove && (installedDependency === undefined || !inBundles)) {
+  if (!options.remove && installedDependency === undefined) {
     fail(
-      `已执行安装，但 profile 清单未同时出现依赖与 bundle 项（dependency=${String(
-        installedDependency,
-      )}, bundle=${String(inBundles)}）。请检查插件管理器日志后重试。`,
+      `已执行安装，但 profile 依赖里没有 ${PACKAGE_NAME}。请检查插件管理器日志后重试。`,
+    );
+  }
+  if (!options.remove && !inBundles) {
+    process.stdout.write(
+      `› 提示: dsh.profile.bundles 未追加 ${PACKAGE_NAME}（本版 DSH 按 dependencies 加载插件层，` +
+        '无需手工补；若重启后插件未激活，再检查 cordis.patch.yml 是否被覆盖）\n',
     );
   }
 
@@ -274,7 +354,7 @@ function main() {
       : [
           '✓ 安装完成。接下来：',
           '  1) 完全退出并重启 DSH 桌面端；',
-          '  2) DSH 启动时会拉起看板娘（需已执行 make build 生成 exe）；',
+          `  2) DSH 启动时会拉起看板娘（已构建: ${join(REPO_ROOT, APP_EXE)}）；`,
           '  3) 新建会话即可看到 mcp__kanbanniang__* 工具。',
           '',
         ].join('\n'),

@@ -94,13 +94,20 @@ node cmd/client/test-streamable.mjs # Streamable HTTP 传输（DSH 同款协议�
 
 ## 作为 DSH 插件安装（推荐）
 
-> 前置：DSH 桌面端 0.2.x 已启动过一次（完成 profile 初始化），且本仓库已构建出 exe。
+> 前置：DSH 桌面端 0.2.x 已启动过一次（完成 profile 初始化）。
 
 ```bash
 npm install
-make build              # Release 构建：生成 target/release/kanbanniang.exe
-npm run plugin:install  # 安装到 DSH desktop profile（自动先编译插件宿主半侧）
+npm run plugin:install  # 构建应用本体（tauri build --no-bundle）+ 编译插件宿主半侧 + 注册到 profile
 ```
+
+安装脚本会**先构建应用本体**再注册插件：插件以 `link:` 方式安装，运行时直接拉起仓库里的
+`target/release/kanbanniang.exe`，不做 exe 打包或复制，因此「安装」必须保证产物是当前源码的
+正式构建（`--no-build` 可跳过构建、沿用现有产物）。
+
+> 不要用 `cargo build --release` 代替构建：那样编出的二进制带 `cfg(dev)`，前端会加载
+> `devUrl`（需要 Vite dev server），DSH 拉起来就是空白窗口、MCP 查询还会超时。启动日志里
+> 出现 `[boot] 当前为开发构建…` 即说明构建方式错了。
 
 安装脚本调用**桌面端自带的 dsh CLI**（`resources/runtime/cli/bin/dsh.cmd`）执行
 `plugin --profile desktop add link:<本仓库绝对路径>`——PATH 上的 npm `dsh` 会拒绝操作 desktop profile。
@@ -114,6 +121,8 @@ npm run plugin:install  # 安装到 DSH desktop profile（自动先编译插件�
   1. `kanbanniang` 宿主插件（`src/plugin/` → `lib/host.js`）：读取看板娘 `settings.json`
      的 `mcpPort` 解析 MCP 端点（默认 7432），发布 `mascotStartup` 服务；探测 `/health`，
      未运行则拉起 `target/release/kanbanniang.exe`（缺省回退 `target/debug/`）并等待就绪；
+     就绪后再做一次**前端链路探活**（MCP `get_status`）——`/health` 只证明后端在监听，
+     前端白屏时后端照样健康，这一步把「拉起了但看不到角色」写进 `plugin.log`；
   2. `@deepseek-ai/dsh-mcp-client`：`inject: [mascotStartup]`，以 `streamable-http` 连接
      同一端点，把 11 个工具注册为 `mcp__kanbanniang__<tool>`。
 

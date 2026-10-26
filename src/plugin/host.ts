@@ -32,8 +32,10 @@ import { createDualLogger, defaultLogPath } from './logging.js';
 import {
   detectLaunch,
   findRepoRoot,
+  FRONTEND_PROBE_TOOL,
   launchDetached,
   moduleRoot,
+  probeFrontend,
   probeHealth,
   terminate,
   waitForHealth,
@@ -101,6 +103,8 @@ export async function apply(ctx: DshPluginContext, rawConfig?: unknown): Promise
 
   if (await probeHealth(healthUrl, config.probeTimeoutMs)) {
     logger.info(`${LOG_PREFIX} 看板娘已在运行，复用现有实例: ${startup.endpoint.mcpUrl}`);
+    // 复用实例也要验证前端：进程在跑不等于画得出角色（dev 构建 / WebView 白屏都会命中这里）。
+    await reportFrontendProbe(startup.endpoint.mcpUrl, logger);
     return;
   }
 
@@ -148,6 +152,7 @@ export async function apply(ctx: DshPluginContext, rawConfig?: unknown): Promise
 
   if (await waitForHealth(healthUrl, config)) {
     logger.info(`${LOG_PREFIX} MCP 服务就绪: ${startup.endpoint.mcpUrl}`);
+    await reportFrontendProbe(startup.endpoint.mcpUrl, logger);
     return;
   }
   // 首次冷启动可能仍在编译：不升级为异常，交给 mcp-client 的重连预算兜底。
@@ -186,4 +191,27 @@ function safeDefaultEndpoint(): McpEndpoint {
   } catch {
     return { mcpUrl: DEFAULT_MCP_URL, source: 'default' };
   }
+}
+
+/**
+ * 前端链路探活并记录结论。
+ *
+ * 后端健康 + 前端白屏是最容易误判的失败形态：`/health` 返回 ok，插件日志照写「就绪」，
+ * 但从用户视角看就是「拉起了却没有角色」。这里用一次查询型工具把真实结论落到日志里，
+ * 避免再出现「日志全绿、屏幕空白」这种排查成本极高的组合。
+ *
+ * @param mcpUrl - Streamable HTTP 端点。
+ * @param logger - 已就绪的日志门面。
+ */
+async function reportFrontendProbe(mcpUrl: string, logger: DshLogger): Promise<void> {
+  const probe = await probeFrontend(mcpUrl);
+  if (probe.ok) {
+    logger.info(`${LOG_PREFIX} 前端链路就绪: ${FRONTEND_PROBE_TOOL} 已响应`);
+    return;
+  }
+  logger.error(
+    `${LOG_PREFIX} 后端已就绪但前端无响应（${probe.reason}）：看板娘窗口可能是空白。` +
+      '最常见原因是 exe 由 cargo build 直接编译（dev 构建加载 devUrl，需要 Vite dev server），' +
+      '请用 "npm run tauri:build" 重新构建后重启看板娘。',
+  );
 }
