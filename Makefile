@@ -30,8 +30,9 @@ check: ## 前端门禁：tsc 类型检查 + Vite 构建（前端改动必过）
 test: ## MCP 冒烟测试（需程序已启动）
 	node cmd/client/test.mjs
 
-unit: ## 前端单元测试（vitest；领域层与纯函数）
+unit: ## 单元测试（前端领域层 + 插件宿主半侧；vitest）
 	$(NPM) run test
+	$(NPM) run test:plugin
 
 lint: ## Rust 门禁：clippy 严格检查（-D warnings）+ 格式校验
 	cd src/tauri && cargo clippy --all-targets -- -D warnings && cargo fmt --check

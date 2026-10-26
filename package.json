@@ -3,7 +3,27 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Tauri + Live2D 桌面看板娘，内置 MCP 服务，可被 Agent 调用执行动作",
+  "description": "Tauri + Live2D 桌面看板娘：内置 MCP 服务，并作为 DSH 插件供 Agent 通过 MCP 工具操作动作/表情/说话/移动",
+  "main": "lib/host.js",
+  "exports": {
+    ".": "./lib/host.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "assets",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "engines": {
+    "dsh": "^0.2.0-rc.1"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "icon": "assets/icon.png"
+  },
   "scripts": {
     "gen:models": "node scripts/gen-models.mjs",
     "predev": "node scripts/gen-models.mjs",
@@ -12,10 +32,14 @@
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:plugin": "vitest run --config vitest.plugin.config.ts",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "plugin:build": "tsc -p tsconfig.plugin.json",
+    "plugin:install": "node scripts/install-dsh-plugin.mjs",
+    "plugin:uninstall": "node scripts/install-dsh-plugin.mjs --remove"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.1.1",
