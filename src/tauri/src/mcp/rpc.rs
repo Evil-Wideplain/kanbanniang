@@ -66,7 +66,7 @@ fn rpc_initialize(req: &Value) -> Value {
         // listChanged: 工具清单在编译期固定，声明 true 只是保持协议惯例；
         // 真正新增工具需要重新构建并重启应用。
         "capabilities": { "tools": { "listChanged": true } },
-        "serverInfo": { "name": "kanban-mascot", "version": env!("CARGO_PKG_VERSION") }
+        "serverInfo": { "name": "kanbanniang", "version": env!("CARGO_PKG_VERSION") }
     })
 }
 
@@ -102,7 +102,7 @@ mod tests {
         // initialize → 协议版本与服务信息
         let init = rpc_result("initialize", &json!({})).unwrap();
         assert_eq!(init["protocolVersion"], "2024-11-05");
-        assert_eq!(init["serverInfo"]["name"], "kanban-mascot");
+        assert_eq!(init["serverInfo"]["name"], "kanbanniang");
         // tools/list → { tools: [...] }
         let list = rpc_result("tools/list", &json!({})).unwrap();
         assert!(list["tools"].is_array());

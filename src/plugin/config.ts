@@ -82,12 +82,12 @@ export function defaultConfig(): PluginConfig {
 export function resolveConfig(raw: unknown): PluginConfig {
   if (raw === undefined || raw === null) return defaultConfig();
   if (typeof raw !== 'object' || Array.isArray(raw)) {
-    throw new Error('[kanban-mascot] config 必须是对象');
+    throw new Error('[kanbanniang] config 必须是对象');
   }
   const record = raw as Record<string, unknown>;
   for (const key of Object.keys(record)) {
     if (!KNOWN_KEYS.has(key)) {
-      throw new Error(`[kanban-mascot] config 含未知字段: ${key}`);
+      throw new Error(`[kanbanniang] config 含未知字段: ${key}`);
     }
   }
 
@@ -151,7 +151,7 @@ export function healthUrlOf(mcpUrl: string): string | undefined {
 function optionalString(value: unknown, field: string): string | undefined {
   if (value === undefined || value === null) return undefined;
   if (typeof value !== 'string' || value.trim() === '') {
-    throw new Error(`[kanban-mascot] config.${field} 必须是非空字符串`);
+    throw new Error(`[kanbanniang] config.${field} 必须是非空字符串`);
   }
   return value.trim();
 }
@@ -160,7 +160,7 @@ function optionalString(value: unknown, field: string): string | undefined {
 function optionalBoolean(value: unknown, field: string): boolean | undefined {
   if (value === undefined || value === null) return undefined;
   if (typeof value !== 'boolean') {
-    throw new Error(`[kanban-mascot] config.${field} 必须是布尔值`);
+    throw new Error(`[kanbanniang] config.${field} 必须是布尔值`);
   }
   return value;
 }
@@ -169,11 +169,11 @@ function optionalBoolean(value: unknown, field: string): boolean | undefined {
 function optionalStringArray(value: unknown, field: string): readonly string[] | undefined {
   if (value === undefined || value === null) return undefined;
   if (!Array.isArray(value) || value.length === 0) {
-    throw new Error(`[kanban-mascot] config.${field} 必须是非空字符串数组`);
+    throw new Error(`[kanbanniang] config.${field} 必须是非空字符串数组`);
   }
   return value.map((item, index) => {
     if (typeof item !== 'string' || item === '') {
-      throw new Error(`[kanban-mascot] config.${field}[${index}] 必须是非空字符串`);
+      throw new Error(`[kanbanniang] config.${field}[${index}] 必须是非空字符串`);
     }
     return item;
   });
@@ -183,11 +183,11 @@ function optionalStringArray(value: unknown, field: string): readonly string[] |
 function optionalTimeout(value: unknown, field: string, fallback: number): number {
   if (value === undefined || value === null) return fallback;
   if (typeof value !== 'number' || !Number.isFinite(value)) {
-    throw new Error(`[kanban-mascot] config.${field} 必须是毫秒数`);
+    throw new Error(`[kanbanniang] config.${field} 必须是毫秒数`);
   }
   if (value < TIMEOUT_RANGE.min || value > TIMEOUT_RANGE.max) {
     throw new Error(
-      `[kanban-mascot] config.${field} 需在 ${TIMEOUT_RANGE.min}~${TIMEOUT_RANGE.max} 毫秒之间`,
+      `[kanbanniang] config.${field} 需在 ${TIMEOUT_RANGE.min}~${TIMEOUT_RANGE.max} 毫秒之间`,
     );
   }
   return Math.round(value);
@@ -199,9 +199,9 @@ function assertHttpUrl(value: string, field: string): void {
   try {
     parsed = new URL(value);
   } catch {
-    throw new Error(`[kanban-mascot] config.${field} 不是合法 URL: ${value}`);
+    throw new Error(`[kanbanniang] config.${field} 不是合法 URL: ${value}`);
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    throw new Error(`[kanban-mascot] config.${field} 必须是 http(s) URL: ${value}`);
+    throw new Error(`[kanbanniang] config.${field} 必须是 http(s) URL: ${value}`);
   }
 }

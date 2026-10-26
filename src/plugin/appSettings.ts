@@ -24,7 +24,7 @@ import { DEFAULT_MCP_URL } from './config.js';
 export const APP_IDENTIFIER = 'com.example.kanbanmascot';
 
 /** 覆盖设置文件路径的环境变量（测试或自定义安装位置时使用）。 */
-export const SETTINGS_PATH_ENV = 'KANBAN_MASCOT_SETTINGS';
+export const SETTINGS_PATH_ENV = 'KANBANNIANG_SETTINGS';
 
 /** 应用设置中与 MCP 相关的字段（camelCase，与 Rust `Settings` 序列化一致）。 */
 export interface AppMcpSettings {

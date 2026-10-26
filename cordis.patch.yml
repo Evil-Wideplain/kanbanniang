@@ -7,10 +7,10 @@
 #   - id 必须唯一且不带行尾注释（插件商店预检按整行解析 id）。
 #
 # 加载顺序与依赖是有意设计：
-#   1) kanban-mascot：宿主插件，解析 MCP 端点（看板娘 settings.json 的 mcpPort，
+#   1) kanbanniang：宿主插件，解析 MCP 端点（看板娘 settings.json 的 mcpPort，
 #      默认 7432），发布 mascotStartup 服务，并确保看板娘应用运行、/health 就绪；
-#   2) kanban-mascot-mcp：官方 MCP 客户端，inject mascotStartup 读取同一份 URL，
-#      连接后把工具注册给模型（模型侧名称形如 mcp__kanban_mascot__speak）。
+#   2) kanbanniang-mcp：官方 MCP 客户端，inject mascotStartup 读取同一份 URL，
+#      连接后把工具注册给模型（模型侧名称形如 mcp__kanbanniang__speak）。
 #
 # 为什么 url 不写死：端口可在看板娘设置页修改；这里通过 inject + !!js 复用宿主
 # 插件解析出的端点，避免「设置页改了端口，插件还连旧端口」的静默失效。
@@ -21,19 +21,19 @@
 # ============================================================================
 
 - insert:
-    - id: kanban-mascot
-      name: 'kanban-mascot'
+    - id: kanbanniang
+      name: 'kanbanniang'
       config:
         # 未运行时由插件拉起 target/release（或 debug）下的可执行文件
         autoLaunch: true
 
-    - id: kanban-mascot-mcp
+    - id: kanbanniang-mcp
       name: '@deepseek-ai/dsh-mcp-client'
       # 等待宿主插件发布 mascotStartup 后再求值 config（官方 web-app 同款装配方式）
       inject: [mascotStartup]
       config:
         # 工具命名空间：mcp__<serverName>__<tool>
-        serverName: kanban_mascot
+        serverName: kanbanniang
         transport: streamable-http
         # !!js 在行激活时求值；兜底地址与 Rust 侧默认端口保持一致
         url: !!js ctx.mascotStartup.mcpUrl ?? 'http://127.0.0.1:7432/mcp'

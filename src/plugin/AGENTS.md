@@ -24,7 +24,7 @@ sources: [.]
 | `config.ts` | 插件配置解析与校验（`mcpUrl` 可选覆盖、`autoLaunch`、超时、`launchCommand` 等）；未知字段报错 | 纯函数，无 IO，可单测 |
 | `appSettings.ts` | 读取看板娘应用设置 `settings.json`（`mcpEnabled` / `mcpPort`），解析端点（显式配置 > 应用设置 > 默认 7432） | 只读；文件缺失/损坏一律回退默认，绝不抛 |
 | `runtime.ts` | 仓库根探测、可执行文件探测、`fetch /health` 探活与轮询、分离进程启动/终止 | 副作用集中处；失败用返回值表达 |
-| `logging.ts` | 双写 logger：`ctx.logger` + `<DSH_HOME>/kanban-mascot/plugin.log` | 文件写失败静默降级，不影响插件 |
+| `logging.ts` | 双写 logger：`ctx.logger` + `<DSH_HOME>/kanbanniang/plugin.log` | 文件写失败静默降级，不影响插件 |
 | `dsh.ts` | DSH Cordis 上下文的最小结构镜像（`logger` / `provide` / `effect`） | 不 import DSH 内部包；升级 DSH 时复核 |
 | `config.test.ts` / `appSettings.test.ts` | 配置与端口解析单测（`npm run test:plugin`） | 只测纯逻辑与只读文件解析 |
 
@@ -56,7 +56,7 @@ sources: [.]
 ## 开发注意事项
 
 - 不 import `@deepseek-ai/*`：插件通过 `file:` / `link:` 安装，无法保证解析到 DSH 私有模块；只用 Node 内置模块。
-- `ctx.logger` 在桌面端不落盘，因此必须同时写 `plugin.log`；日志中文、前缀 `[kanban-mascot]`。
+- `ctx.logger` 在桌面端不落盘，因此必须同时写 `plugin.log`；日志中文、前缀 `[kanbanniang]`。
 - 插件的 `apply` 可能因 HMR 重跑：探活成功即复用现有实例，禁止重复拉起。
 - 启动子进程必须 `detached + stdio:'ignore' + unref()`，避免 DSH 退出被拖住；`cwd` 用仓库根。
 - `resolveStartup` 兜底默认配置里的超时字段无实际用途（`ok=false` 时直接返回），保持字段完整即可。

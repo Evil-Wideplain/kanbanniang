@@ -27,7 +27,7 @@ const SESSION_HEADER: &str = "mcp-session-id";
 pub(super) async fn health_handler() -> Response {
     let body = serde_json::json!({
         "ok": true,
-        "service": "kanban-mascot",
+        "service": "kanbanniang",
         "version": env!("CARGO_PKG_VERSION"),
         "transport": ["sse", "streamable-http"],
     });

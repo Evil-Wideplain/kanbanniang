@@ -26,7 +26,7 @@ describe('appSettings', () => {
   const previousAppData = process.env.APPDATA;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'kanban-mascot-settings-'));
+    dir = mkdtempSync(join(tmpdir(), 'kanbanniang-settings-'));
     settingsPath = join(dir, 'settings.json');
     process.env[SETTINGS_PATH_ENV] = settingsPath;
   });

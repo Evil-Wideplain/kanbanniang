@@ -79,12 +79,12 @@ async function main() {
   const init = await rpc('initialize', {
     protocolVersion: '2024-11-05',
     capabilities: {},
-    clientInfo: { name: 'kanban-mascot-streamable-smoke', version: '0.1.0' },
+    clientInfo: { name: 'kanbanniang-streamable-smoke', version: '0.1.0' },
   });
   assert(init.status === 200, `initialize HTTP ${init.status}`);
   assert(typeof init.sessionId === 'string' && init.sessionId !== '', 'initialize 未下发 Mcp-Session-Id');
   const serverInfo = init.body?.result?.serverInfo;
-  assert(serverInfo?.name === 'kanban-mascot', 'serverInfo.name 不匹配');
+  assert(serverInfo?.name === 'kanbanniang', 'serverInfo.name 不匹配');
   process.stdout.write(`✅ initialize: ${serverInfo.name} v${serverInfo.version} session=${init.sessionId}\n`);
 
   const notified = await notify('notifications/initialized', init.sessionId);

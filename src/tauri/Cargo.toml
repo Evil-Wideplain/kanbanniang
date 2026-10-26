@@ -1,5 +1,5 @@
 [package]
-name = "kanban-mascot"
+name = "kanbanniang"
 version = "0.1.0"
 description = "Tauri + Live2D 桌面看板娘，内置 MCP 服务"
 authors = ["you"]
@@ -7,7 +7,7 @@ edition = "2021"
 rust-version = "1.77"
 
 [lib]
-name = "kanban_mascot_lib"
+name = "kanbanniang_lib"
 # 桌面构建只需 rlib（供 bin 链接）。cdylib 在 Windows 下自动导出 10 万+ 符号，
 # 超过 PE 格式 65535 上限导致链接失败；如将来做移动端再按平台加回。
 crate-type = ["rlib"]

@@ -2,7 +2,7 @@
 # 用法：make <目标>；make 或 make help 查看全部
 # 注意：msys sh 里裸 `npm` 的 bash shebang 会解析到 WSL 的 bash 别名而失败，故用 npm.cmd
 NPM ?= npm.cmd
-APP := target/release/kanban-mascot.exe
+APP := target/release/kanbanniang.exe
 
 .PHONY: help install dev build debug run check test unit lint fmt verify score clean
 

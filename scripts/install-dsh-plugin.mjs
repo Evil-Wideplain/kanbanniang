@@ -24,7 +24,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /** 插件包名，同时是 profile 依赖名与 bundle 名。 */
-const PACKAGE_NAME = 'kanban-mascot';
+const PACKAGE_NAME = 'kanbanniang';
 
 /** 仓库根（本脚本位于 `<repo>/scripts/`）。 */
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -63,7 +63,7 @@ function printHelp() {
   -h, --help        显示帮助
 
 安装完成后需完全退出并重启 DSH 桌面端；DSH 启动时会拉起看板娘，
-并以 mcp__kanban_mascot__* 的形式把工具暴露给模型。
+并以 mcp__kanbanniang__* 的形式把工具暴露给模型。
 `);
 }
 
@@ -275,7 +275,7 @@ function main() {
           '✓ 安装完成。接下来：',
           '  1) 完全退出并重启 DSH 桌面端；',
           '  2) DSH 启动时会拉起看板娘（需已执行 make build 生成 exe）；',
-          '  3) 新建会话即可看到 mcp__kanban_mascot__* 工具。',
+          '  3) 新建会话即可看到 mcp__kanbanniang__* 工具。',
           '',
         ].join('\n'),
   );

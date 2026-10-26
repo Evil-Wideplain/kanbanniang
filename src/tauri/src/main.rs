@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    kanban_mascot_lib::run();
+    kanbanniang_lib::run();
 }

@@ -1,10 +1,10 @@
-# 看板娘 KanbanMascot · Tauri + Live2D + 内置 MCP 服务
+# 看板娘 KanbanNiang · Tauri + Live2D + 内置 MCP 服务
 
 一个**桌面看板娘**：用 [Tauri](https://tauri.app/) 做窗口外壳，用 [Live2D Cubism](https://www.live2d.com/) 做角色渲染，并在应用内**直接提供一个 MCP（Model Context Protocol）服务**（同时支持旧版 SSE 与 Streamable HTTP）。任何兼容 MCP 的 Agent（**DSH**、Claude Desktop、自定义脚本等）都能连上来，调用工具让看板娘**做动作、换表情、说话、移动、查询状态**。
 
 > 核心价值：**看板娘即工具（tool）**。Agent 不需要理解 Live2D，只要调用 `play_motion` / `speak` / `set_expression` 等 MCP 工具，桌面上的看板娘就会动起来。
 >
-> 本仓库同时是一个 **DSH 插件包**：安装后 DSH 启动时会自动拉起看板娘，并把 11 个工具注册给模型（`mcp__kanban_mascot__*`）。
+> 本仓库同时是一个 **DSH 插件包**：安装后 DSH 启动时会自动拉起看板娘，并把 11 个工具注册给模型（`mcp__kanbanniang__*`）。
 
 ---
 
@@ -13,7 +13,7 @@
 ```
 ┌──────────────────────────────┐   ┌────────────────────────────────┐
 │  DSH（插件系统 + MCP 客户端） │   │  Claude Desktop / Inspector 等  │
-│  mcp__kanban_mascot__* 工具   │   │  任意 MCP 客户端                 │
+│  mcp__kanbanniang__* 工具     │   │  任意 MCP 客户端                 │
 └──────────────┬───────────────┘   └───────────────┬────────────────┘
                │ Streamable HTTP                    │ SSE / Streamable HTTP
                ▼                                    ▼
@@ -41,7 +41,7 @@
 ## 特性
 
 - ✅ 内置 MCP 服务：**Streamable HTTP + SSE 双传输**，Agent 即连即用
-- ✅ **可作为 DSH 插件安装**：DSH 启动自动拉起看板娘，工具以 `mcp__kanban_mascot__*` 注入会话
+- ✅ **可作为 DSH 插件安装**：DSH 启动自动拉起看板娘，工具以 `mcp__kanbanniang__*` 注入会话
 - ✅ 11 个工具：动作 / 表情 / 说话 / **窗口移动**（平滑滑行）/ 窗口内站位 / 待机 / 列动作 / 列表情 / 查状态 / **运行时换模型** / 列模型
 - ✅ Live2D Cubism 3–5.3 模型即插即用：放入 `models/` 后自动发现并登记
 - ✅ 透明无边框、置顶窗口，典型的桌面看板娘形态
@@ -90,33 +90,41 @@ node cmd/client/test-streamable.mjs # Streamable HTTP 传输（DSH 同款协议�
 
 ```bash
 npm install
-make build              # Release 构建：生成 target/release/kanban-mascot.exe
+make build              # Release 构建：生成 target/release/kanbanniang.exe
 npm run plugin:install  # 安装到 DSH desktop profile（自动先编译插件宿主半侧）
 ```
 
 安装脚本调用**桌面端自带的 dsh CLI**（`resources/runtime/cli/bin/dsh.cmd`）执行
 `plugin --profile desktop add link:<本仓库绝对路径>`——PATH 上的 npm `dsh` 会拒绝操作 desktop profile。
-插件管理器会完成：profile 依赖写为 `link:` 符号链接、`dsh.profile.bundles` 追加 `kanban-mascot`、
+插件管理器会完成：profile 依赖写为 `link:` 符号链接、`dsh.profile.bundles` 追加 `kanbanniang`、
 用自带 pnpm 安装、以及版本闸门校验（本包声明 `engines.dsh: ^0.2.0-rc.1`）。
 
 **它做了什么**
 
 - 根目录 `package.json` 的 `dsh.bundle.patch` 指向 `cordis.patch.yml`，安装后自动成为一层 bundle；
 - `cordis.patch.yml` 按顺序插入两条插件：
-  1. `kanban-mascot` 宿主插件（`src/plugin/` → `lib/host.js`）：读取看板娘 `settings.json`
+  1. `kanbanniang` 宿主插件（`src/plugin/` → `lib/host.js`）：读取看板娘 `settings.json`
      的 `mcpPort` 解析 MCP 端点（默认 7432），发布 `mascotStartup` 服务；探测 `/health`，
-     未运行则拉起 `target/release/kanban-mascot.exe`（缺省回退 `target/debug/`）并等待就绪；
+     未运行则拉起 `target/release/kanbanniang.exe`（缺省回退 `target/debug/`）并等待就绪；
   2. `@deepseek-ai/dsh-mcp-client`：`inject: [mascotStartup]`，以 `streamable-http` 连接
-     同一端点，把 11 个工具注册为 `mcp__kanban_mascot__<tool>`。
+     同一端点，把 11 个工具注册为 `mcp__kanbanniang__<tool>`。
 
 > 端口只有一处来源：看板娘设置页（写入 `settings.json`）。插件每次启动都会重新读取，
 > 因此改端口后只需重启 DSH，不必修改插件配置。
 
+> **从旧名升级**：旧包名 `kanban-mascot` 已整体改为 `kanbanniang`——包名、插件 id、MCP 工具命名空间
+> （`mcp__kanbanniang__*`）、可执行文件名、DSH 插件日志目录（`~/.dsh/kanbanniang/`）与环境变量前缀
+> （`KANBANNIANG_*`）全部随之更新。Tauri application identifier 仍保留 `com.example.kanbanmascot`，
+> 因此既有 `settings.json`（端口 / 模型 / 不透明度等）与 Rust 应用日志的回退目录继续复用，无需重新配置；
+> 应用日志文件名随 productName 变为 `KanbanNiang.log`。
+> 装过旧版的机器请先 `dsh plugin --profile desktop remove kanban-mascot` 再 `npm run plugin:install`，
+> 否则 profile 里的旧 bundle 行会解析失败。
+
 **重启 DSH 后验证**
 
 - 新建会话，对模型说「让看板娘挥挥手，并说欢迎回来」；
-- 可用工具里应出现 `mcp__kanban_mascot__get_status`、`..._speak`、`..._play_motion` 等；
-- 宿主插件日志：`~/.dsh/kanban-mascot/plugin.log`（DSH 桌面端本身不落盘 host 插件日志，故双写一份）。
+- 可用工具里应出现 `mcp__kanbanniang__get_status`、`..._speak`、`..._play_motion` 等；
+- 宿主插件日志：`~/.dsh/kanbanniang/plugin.log`（DSH 桌面端本身不落盘 host 插件日志，故双写一份）。
 
 **图形界面安装（等价）**：DSH 侧栏「插件」→「安装第三方插件」→ 填本仓库绝对路径 `C:\Code\pet` → 安装并启用。
 
@@ -133,7 +141,7 @@ npm run plugin:install  # 安装到 DSH desktop profile（自动先编译插件�
 **卸载**
 
 ```bash
-npm run plugin:uninstall   # dsh plugin --profile desktop remove kanban-mascot
+npm run plugin:uninstall   # dsh plugin --profile desktop remove kanbanniang
 ```
 
 安装/卸载后需**完全退出并重启 DSH** 生效；看板娘应用与仓库文件不受影响，仍可单独运行。
@@ -149,14 +157,14 @@ npm run plugin:uninstall   # dsh plugin --profile desktop remove kanban-mascot
 ```json
 {
   "mcpServers": {
-    "kanban-mascot": {
+    "kanbanniang": {
       "url": "http://127.0.0.1:7432/mcp/sse"
     }
   }
 }
 ```
 
-重启 Claude Desktop，确认「kanban-mascot」已连接。之后你可以直接对它说：
+重启 Claude Desktop，确认「kanbanniang」已连接。之后你可以直接对它说：
 "让看板娘挥手并说『欢迎回来～』"，它就会调用 `play_motion` + `speak`。
 
 ### 任意支持 SSE 的客户端 / 自定义 Agent
@@ -249,6 +257,6 @@ pet/
 - 查询型工具依赖前端在线（窗口开着）；若窗口关闭，查询会 5s 超时。
 - MCP 目前仅本地 `127.0.0.1` 暴露，未做鉴权（桌面本地应用足够；若需远程接入请自行加 token/隧道）。
 - DSH 宿主插件按仓库路径（`link:`）安装，**要求本机已 `make build`**；安装包分发（npm / 市场）尚未配置。
-- 插件日志写到 `<DSH_HOME>/kanban-mascot/plugin.log`：桌面端 DSH 不落盘宿主插件 stdout，排查请优先看该文件。
+- 插件日志写到 `<DSH_HOME>/kanbanniang/plugin.log`：桌面端 DSH 不落盘宿主插件 stdout，排查请优先看该文件。
 - Windows 为主要验证平台；macOS / Linux 的自动拉起路径（可执行文件名）未做适配。
 - 可扩展方向：点击交互、动作队列、把「前端状态」做成可订阅的资源（MCP resources）。（拖拽窗口、多模型切换已完成）

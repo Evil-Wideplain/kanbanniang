@@ -46,7 +46,7 @@ POST /mcp（Streamable HTTP，DSH 使用）──┐
 GET /mcp/sse + POST /mcp/messages ─────┴─▶ rpc.rs（JSON-RPC 分发）
                                              ├─ initialize / ping / tools/list 就地应答
                                              └─ tools/call → tools.rs 路由 → state.rs::dispatch
-GET /health ──▶ {"ok":true,"service":"kanban-mascot",...}（插件探活）
+GET /health ──▶ {"ok":true,"service":"kanbanniang",...}（插件探活）
 ```
 
 `initialize` 回 `protocolVersion: "2024-11-05"`、`capabilities.tools.listChanged: true`、`serverInfo`（name + `env!("CARGO_PKG_VERSION")`）。Streamable HTTP 为无状态实现：会话头只在 initialize 下发、不校验归属；`GET /mcp` 按协议回 405（客户端视为不支持服务端推送）。

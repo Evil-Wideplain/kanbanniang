@@ -70,7 +70,7 @@ fn exe_dir() -> Option<PathBuf> {
 
 /// 试写探针文件判断目录可写：插件初始化失败会导致整个应用启动失败，因此先探测再决定目标。
 fn is_writable(dir: &Path) -> bool {
-    let probe = dir.join(".kanban-mascot-log-probe");
+    let probe = dir.join(".kanbanniang-log-probe");
     let writable = std::fs::write(&probe, b"").is_ok();
     let _ = std::fs::remove_file(&probe);
     writable

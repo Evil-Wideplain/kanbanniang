@@ -1,7 +1,7 @@
 /**
  * 插件日志落盘：DSH 桌面端不把 host 插件日志写入文件（子进程 stdout 由 Electron 接管），
  * 排障时只靠 GUI 插件页与崩溃日志不够用。这里在 `ctx.logger` 之外补一份独立文件日志，
- * 位置固定为 `<DSH_HOME>/kanban-mascot/plugin.log`（可用环境变量覆盖）。
+ * 位置固定为 `<DSH_HOME>/kanbanniang/plugin.log`（可用环境变量覆盖）。
  *
  * 约束：日志写入失败绝不能影响插件功能，所有文件操作均静默降级。
  *
@@ -15,7 +15,7 @@ import { dirname, join, resolve } from 'node:path';
 import type { DshLogger } from './dsh.js';
 
 /** 覆盖插件日志路径的环境变量（测试或自定义部署时使用）。 */
-export const LOG_PATH_ENV = 'KANBAN_MASCOT_PLUGIN_LOG';
+export const LOG_PATH_ENV = 'KANBANNIANG_PLUGIN_LOG';
 
 /** 解析 DSH 主目录：优先 `DSH_HOME`，否则 `~/.dsh`。 */
 export function resolveDshHome(): string {
@@ -28,7 +28,7 @@ export function resolveDshHome(): string {
 export function defaultLogPath(): string {
   const override = process.env[LOG_PATH_ENV];
   if (override !== undefined && override.trim() !== '') return resolve(override);
-  return join(resolveDshHome(), 'kanban-mascot', 'plugin.log');
+  return join(resolveDshHome(), 'kanbanniang', 'plugin.log');
 }
 
 /**

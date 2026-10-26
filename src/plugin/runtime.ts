@@ -29,8 +29,8 @@ export type LaunchResult =
 /** 内置产物相对仓库根的位置（release 优先，debug 兜底）。 */
 const EXE_CANDIDATES: readonly string[] =
   process.platform === 'win32'
-    ? ['target/release/kanban-mascot.exe', 'target/debug/kanban-mascot.exe']
-    : ['target/release/kanban-mascot', 'target/debug/kanban-mascot'];
+    ? ['target/release/kanbanniang.exe', 'target/debug/kanbanniang.exe']
+    : ['target/release/kanbanniang', 'target/debug/kanbanniang'];
 
 /** 向上探测仓库根的最大层数（node_modules 软链接层级留够余量）。 */
 const MAX_ROOT_WALK = 8;

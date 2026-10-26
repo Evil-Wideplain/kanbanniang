@@ -1821,7 +1821,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kanban-mascot"
+name = "kanbanniang"
 version = "0.1.0"
 dependencies = [
  "anyhow",

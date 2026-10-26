@@ -10,7 +10,7 @@
  * 1. 本插件（先加载）→ `ctx.provide('mascotStartup', { mcpUrl })`，
  *    等待 `/health` 就绪，必要时拉起看板娘；
  * 2. `@deepseek-ai/dsh-mcp-client`（后加载，`inject: [mascotStartup]`）→
- *    `url: !!js ctx.mascotStartup.mcpUrl`，把工具以 `mcp__kanban_mascot__<tool>`
+ *    `url: !!js ctx.mascotStartup.mcpUrl`，把工具以 `mcp__kanbanniang__<tool>`
  *    注册进 DSH。
  *
  * 注意：`mascotStartup` 必须在**所有失败路径**下都被提供——如果 MCP 客户端行
@@ -40,13 +40,13 @@ import {
 } from './runtime.js';
 
 /** 日志前缀：与仓库其他模块的 `[mascot]` / `[mcp]` 风格保持一致，便于检索。 */
-const LOG_PREFIX = '[kanban-mascot]';
+const LOG_PREFIX = '[kanbanniang]';
 
 /** 对外发布的 Cordis 服务名（MCP 客户端行按它 inject）。 */
 const STARTUP_SERVICE = 'mascotStartup';
 
 /** 插件名（宿主日志与配置树中可见）。 */
-export const name = 'kanban-mascot';
+export const name = 'kanbanniang';
 
 /** 本插件不依赖宿主服务：只做端点解析、进程编排与日志。 */
 export const inject: readonly string[] = [];
@@ -72,7 +72,7 @@ interface StartupResolution {
  * @param rawConfig - `cordis.patch.yml` 中的 `config` 字段（可为空）。
  */
 export async function apply(ctx: DshPluginContext, rawConfig?: unknown): Promise<void> {
-  // 桌面端 DSH 不落盘 host 日志：这里同时写一份到 `<DSH_HOME>/kanban-mascot/plugin.log`。
+  // 桌面端 DSH 不落盘 host 日志：这里同时写一份到 `<DSH_HOME>/kanbanniang/plugin.log`。
   const logger = createDualLogger(ctx.logger, defaultLogPath());
   const startup = resolveStartup(rawConfig, logger);
 
@@ -117,7 +117,7 @@ export async function apply(ctx: DshPluginContext, rawConfig?: unknown): Promise
   if (launch === undefined) {
     logger.error(
       `${LOG_PREFIX} 未找到看板娘可执行文件。请先在仓库根执行 "make build" 生成 ` +
-        'target/release/kanban-mascot.exe，或在 cordis.patch.yml 中配置 launchCommand。',
+        'target/release/kanbanniang.exe，或在 cordis.patch.yml 中配置 launchCommand。',
     );
     return;
   }
@@ -143,7 +143,7 @@ export async function apply(ctx: DshPluginContext, rawConfig?: unknown): Promise
       logger.info(`${LOG_PREFIX} 插件卸载：终止看板娘进程 pid=${started.pid}`);
       terminate(started.pid);
     },
-    'kanban-mascot.lifecycle',
+    'kanbanniang.lifecycle',
   );
 
   if (await waitForHealth(healthUrl, config)) {

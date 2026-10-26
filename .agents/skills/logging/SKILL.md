@@ -22,7 +22,7 @@ Rust 禁止 `println!`（由 `clippy::print_stdout` 强制）：GUI 应用 stdou
 ## 落盘与查看
 
 - 注册入口：`src/tauri/src/log_setup.rs::plugin()`（`tauri_plugin_log::Builder` 配置，由 `lib.rs` 随 Tauri 启动注册）；targets = Stderr + 可执行文件目录（不可写时回退 LogDir）
-- 日志文件：可执行文件同目录（dev 为 `target/debug/`，release 为安装目录）下的 `KanbanMascot.log`（文件名默认取 `productName`）；目录不可写时回退 `app_log_dir()`（Windows：`%LOCALAPPDATA%\<bundle id>\logs\`）；行格式 = UTC 时间戳 + 消息 + `level=xx`（如 `2026-10-17T09:02:42Z [mcp] SSE 会话建立 sessionId=xxx level=info`）
+- 日志文件：可执行文件同目录（dev 为 `target/debug/`，release 为安装目录）下的 `KanbanNiang.log`（文件名默认取 `productName`）；目录不可写时回退 `app_log_dir()`（Windows：`%LOCALAPPDATA%\<bundle id>\logs\`）；行格式 = UTC 时间戳 + 消息 + `level=xx`（如 `2026-10-17T09:02:42Z [mcp] SSE 会话建立 sessionId=xxx level=info`）
 - 级别过滤 `LevelFilter::Info`（debug/trace 不落盘）；滚动策略：超过 5 MiB 归档为带日期文件、保留 1 份（`RotationStrategy::KeepSome(1)`）
 - 前端：`[mascot]` 前缀的 `console.*` 由 `src/frontend/shared/ipc/log-forward.ts` 拦截，经官方插件 JS 桥（`@tauri-apps/plugin-log`，需 `log:default` 权限）转发后端落盘；附加参数序列化为 `data=`（Error 提级为 `{name,message}`，超 2000 字符截断）；非 Tauri 环境仅保留本地 console
 - 日志是旁路：写失败/插件不可用不得阻断主流程，静默跳过或降级即可
