@@ -95,7 +95,8 @@ export async function connect({ name = "mcp-client", version = "0.0.1" } = {}) {
 
   const call = (tool, args) => rpc("tools/call", { name: tool, arguments: args ?? {} });
 
-  // 协议版本唯一出处（与服务端一致，勿单处擅改）
+  // 本客户端走旧版 SSE 通道，故声明该通道所属的协议版本（2024-11-05）；
+  // 服务端按请求回显，不必与 Streamable HTTP 通道的版本号保持一致。
   const init = await rpc("initialize", {
     protocolVersion: "2024-11-05",
     capabilities: {},

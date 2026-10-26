@@ -4,7 +4,7 @@ created: 2026-10-17
 updated: 2026-10-26
 type: concept
 tags: [rust, tauri, axum, mcp, sse, streamable-http]
-description: Rust 后端执行细则：模块职责与边界、MCP 双传输（Streamable HTTP + SSE）与 /health、错误处理、质量门禁（clippy/fmt/cargo-crap）。
+description: Rust 后端执行细则：模块职责与边界、MCP 传输（Streamable HTTP 主路径 + 旧版 SSE 兼容）与 /health、协议版本协商、错误处理、质量门禁（clippy/fmt/cargo-crap）。
 sources: [.]
 ---
 
@@ -12,7 +12,7 @@ sources: [.]
 
 ## 职责
 
-桌面应用后端与 MCP 服务（**Streamable HTTP + 旧版 SSE**）：接收 Agent 的 JSON-RPC 工具调用，经 Tauri 事件转发给前端看板娘，并等待查询型工具的结果回传（5s 超时）。额外提供 `/health` 供 DSH 插件探活。包根即本目录，所有 cargo 命令在此执行（workdir: `src/tauri`）。
+桌面应用后端与 MCP 服务（**Streamable HTTP 主路径 + 旧版 SSE 兼容通道**）：接收 Agent 的 JSON-RPC 工具调用，经 Tauri 事件转发给前端看板娘，并等待查询型工具的结果回传（5s 超时）。额外提供 `/health` 供 DSH 插件探活。包根即本目录，所有 cargo 命令在此执行（workdir: `src/tauri`）。
 
 ## 关键文件
 
@@ -21,8 +21,8 @@ sources: [.]
 | `src/lib.rs` | 组合根：装配共享状态、注册结果监听器、读取设置、拉起 MCP 服务、注册设置命令、注册 autostart 插件、应用运行态偏好（`commands::apply_startup`） | 只做接线；启动失败记录日志并以非零码退出 |
 | `src/mcp/mod.rs` | 模块根：子模块声明与 re-export、共享常量（`DEFAULT_MCP_PORT` / `QUERY_TIMEOUT_SECS`）、`AppState` 别名 | 只做收口；协议文档头在此 |
 | `src/mcp/server.rs` | 服务生命周期：启动 / 停止 / 按端口热重启（`ServerHandle` / `ServiceManager`，先建后销）+ 路由装配（`/mcp` · `/mcp/sse` · `/mcp/messages` · `/health`） | 只做启停编排与路由装配；不写工具语义 |
-| `src/mcp/streamable.rs` | Streamable HTTP 传输（无状态）：`POST /mcp` 同步回 JSON/202、initialize 下发 `Mcp-Session-Id`、`GET /mcp` → 405、`DELETE` 幂等、`OPTIONS` CORS；`/health` 探活 | 只做传输适配；协议分发交 `rpc` |
-| `src/mcp/sse.rs` | 旧版 SSE 传输：握手 / 会话治理（`sse_handler`）+ POST 入口（`post_handler` / `parse_request` / `SessionGuard`） | 只做传输与会话清理；协议分发交 `rpc` |
+| `src/mcp/streamable.rs` | Streamable HTTP 传输（**主路径**，无状态）：`POST /mcp` 同步回 JSON/202、initialize 下发 `Mcp-Session-Id`、`GET /mcp` → 405、`DELETE` 幂等、`OPTIONS` CORS；`/health` 探活 | 只做传输适配；协议分发交 `rpc` |
+| `src/mcp/sse.rs` | **旧版 SSE 传输（已废弃，仅兼容老客户端）**：握手 / 会话治理（`sse_handler`）+ POST 入口（`post_handler` / `parse_request` / `SessionGuard`）；新接入一律用 `/mcp` | 只做传输与会话清理；协议分发交 `rpc` |
 | `src/mcp/rpc.rs` | JSON-RPC 协议：方法路由（initialize / ping / tools/list / tools/call）与响应封套成型（错误码/字段） | 不写工具语义与传输细节 |
 | `src/mcp/tools.rs` | 工具清单加载（`src/mcp/tools.json` 编译期嵌入）与 `tools/call` 路由（核心 `route`；调试面板复用 `call_tool` 完整协议封套） | 只投影协议字段；`action`/`query` 内部字段不得混入 `tools/list` 响应 |
 | `src/mcp/debug.rs` | 应用内调试面板的 MCP 入口：`debug_call` 自造 JSON-RPC id 复用 `tools::call_tool` 完整协议封套，返回整帧响应 | 只做调试接线；复用真链路但绕过传输层 |
@@ -42,14 +42,14 @@ sources: [.]
 ### MCP 请求链路（双传输共用同一套协议与工具）
 
 ```
-POST /mcp（Streamable HTTP，DSH 使用）──┐
-GET /mcp/sse + POST /mcp/messages ─────┴─▶ rpc.rs（JSON-RPC 分发）
-                                             ├─ initialize / ping / tools/list 就地应答
-                                             └─ tools/call → tools.rs 路由 → state.rs::dispatch
-GET /health ──▶ {"ok":true,"service":"kanbanniang",...}（插件探活）
+POST /mcp（Streamable HTTP，主路径，DSH 等新客户端）──┐
+GET /mcp/sse + POST /mcp/messages（旧版 SSE，兼容）───┴─▶ rpc.rs（JSON-RPC 分发）
+                                                            ├─ initialize / ping / tools/list 就地应答
+                                                            └─ tools/call → tools.rs 路由 → state.rs::dispatch
+GET /health ──▶ {"ok":true,"service":"kanbanniang","transport":[...],...}（插件探活）
 ```
 
-`initialize` 回 `protocolVersion: "2024-11-05"`、`capabilities.tools.listChanged: true`、`serverInfo`（name + `env!("CARGO_PKG_VERSION")`）。Streamable HTTP 为无状态实现：会话头只在 initialize 下发、不校验归属；`GET /mcp` 按协议回 405（客户端视为不支持服务端推送）。
+`initialize` 的 `protocolVersion` **按客户端请求回显**：取 `params.protocolVersion`，命中 `SUPPORTED_PROTOCOL_VERSIONS`（`2024-11-05` / `2025-03-26` / `2025-06-18`）则原样返回，否则回退 `FALLBACK_PROTOCOL_VERSION`（当前 `2025-06-18`）。不要改回硬编码——两条传输分属不同规范版本，写死任一版本都会对另一条自相矛盾。其余：`capabilities.tools.listChanged: true`、`serverInfo`（name + `env!("CARGO_PKG_VERSION")`）。Streamable HTTP 为无状态实现：会话头只在 initialize 下发、不校验归属；`GET /mcp` 按协议回 405（客户端视为不支持服务端推送）。
 
 ### 常驻托盘与窗口行为
 
@@ -129,7 +129,7 @@ lint 配置唯一来源：`Cargo.toml` 的 `[lints]` 表与 `rustfmt.toml`。启
 - 统一 `anyhow::Result` + `?` 传播；错误信息中文、可定位（例：「前端响应超时（5s）」）。
 - 运行期路径禁止 `unwrap` / `expect` / `panic!`（由 lint 门禁强制）；仅启动期 fail-fast 可受控例外，且必须 `#[allow]` + 中文注释说明理由（现有唯一例外：`tools.rs::manifest`）。
 - 互斥锁一律走 `AppStateInner` 访问器（`sessions()` / `pending()`）：锁中毒自愈（`PoisonError::into_inner`）而非级联 panic；禁止 `lock().unwrap()`。
-- 超时/并发/回滚路径必须有防护且写清原因：查询型 5s 超时后必须清理 `pending` 表（防泄漏）；SSE 会话断开由 `SessionGuard::drop` 清理 `sessions` 表（防重连累积泄漏）；SSE `broadcast` 落后丢弃策略（Lagged）不得改为阻塞等待。
+- 超时/并发/回滚路径必须有防护且写清原因：查询型 5s 超时后必须清理 `pending` 表（防泄漏）；SSE 会话断开由 `SessionGuard::drop` 清理 `sessions` 表（防重连累积泄漏）；SSE `broadcast` 落后丢弃策略（Lagged）不得改为阻塞等待。注意 `sessions` / `SessionGuard` / `Lagged` 这组状态**只为 SSE 兼容通道存在**，Streamable HTTP 是无状态的；若要下线 SSE，这条链可整段删除（`rpc` / `tools` / `state.pending` 均不受影响）。
 - 事件契约字段改动必须与 `src/frontend/shared/domain/types.ts` 同步；`#[serde(default)]` 等兼容标记不得随意移除。设置契约同理由 `config.rs::Settings` ↔ `types.ts::MascotSettings` 成对维护（camelCase）。
 - edition 2021、MSRV 1.77（`Cargo.toml`）；使用更高版本要求的语法/API 时必须同步更新 `rust-version`。
 - 常量集中定义（如 `mcp::DEFAULT_MCP_PORT`、查询超时 5s）；端口以设置为准，魔法值必须附中文注释（如 SSE 缓冲 64）。

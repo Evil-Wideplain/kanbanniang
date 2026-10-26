@@ -15,7 +15,7 @@
 │  DSH（插件系统 + MCP 客户端） │   │  Claude Desktop / Inspector 等  │
 │  mcp__kanbanniang__* 工具     │   │  任意 MCP 客户端                 │
 └──────────────┬───────────────┘   └───────────────┬────────────────┘
-               │ Streamable HTTP                    │ SSE / Streamable HTTP
+               │ Streamable HTTP                    │ Streamable HTTP / 旧版 SSE
                ▼                                    ▼
         ┌──────────────────────────────────────────────────────────┐
         │  看板娘 Tauri 进程（Rust，127.0.0.1:7432）                │
@@ -31,7 +31,10 @@
         └──────────────────────────────────────────────────────────┘
 ```
 
-- **两种传输**：同一端口同时提供 MCP **Streamable HTTP**（`POST http://127.0.0.1:7432/mcp`，DSH 使用）与旧版 **SSE**（`http://127.0.0.1:7432/mcp/sse`，Claude Desktop 等使用）；`/health` 供插件探活。
+- **双传输**：同一端口同时提供 MCP **Streamable HTTP**（`POST http://127.0.0.1:7432/mcp`，
+  **主路径**，DSH 及所有现代客户端走这条）与旧版 **SSE**（`http://127.0.0.1:7432/mcp/sse`，
+  MCP `2024-11-05` 的传输，自 `2025-03-26` 起已被 Streamable HTTP 取代并废弃，仅兼容老客户端）；
+  `/health` 供插件探活。两条路径共用同一套 JSON-RPC 与工具实现。
 - **动作链路**：Agent 调用工具 → axum 收到 `tools/call` → 通过 Tauri 事件 `mascot:action` 通知前端 → 前端驱动 Live2D 看板娘执行。
 - **查询链路**：`list_motions` / `list_expressions` / `get_status` / `set_model` / `list_models` 这类查询型工具，前端执行后通过 `mascot:result` 事件把结果回传，Rust 端用 oneshot 通道等结果（超时 5s）。
 - **DSH 插件链路**：DSH 启动 → 宿主插件探活/拉起看板娘 → 官方 MCP 客户端连接 `/mcp` → 工具注入当前会话。
@@ -150,26 +153,33 @@ npm run plugin:uninstall   # dsh plugin --profile desktop remove kanbanniang
 
 ## 让 Agent 接入（MCP 客户端配置）
 
-### Claude Desktop（SSE 服务器）
+> **端点：`http://127.0.0.1:7432/mcp`（Streamable HTTP，主路径）**。只有当客户端**只实现旧版
+> SSE 传输、不会回退新版**时，才改用 `http://127.0.0.1:7432/mcp/sse`。端口可在设置页修改。
 
-编辑 `claude_desktop_config.json`（位置见 Claude 文档），加入：
+### DSH
+
+见上文「作为 DSH 插件安装」，无需手工配置。
+
+### Claude Desktop / 其他客户端
+
+编辑客户端的 MCP 配置（Claude Desktop 为 `claude_desktop_config.json`，位置见其文档）：
 
 ```json
 {
   "mcpServers": {
     "kanbanniang": {
-      "url": "http://127.0.0.1:7432/mcp/sse"
+      "url": "http://127.0.0.1:7432/mcp"
     }
   }
 }
 ```
 
-重启 Claude Desktop，确认「kanbanniang」已连接。之后你可以直接对它说：
+重启客户端，确认「kanbanniang」已连接。之后你可以直接说：
 "让看板娘挥手并说『欢迎回来～』"，它就会调用 `play_motion` + `speak`。
 
-### 任意支持 SSE 的客户端 / 自定义 Agent
+若客户端版本较老、只认旧版 SSE（`2024-11-05`）传输，把 `url` 换成
+`http://127.0.0.1:7432/mcp/sse` 即可——功能完全一致，只是换了条通道。
 
-只要客户端支持 MCP SSE 传输，指向 `http://127.0.0.1:7432/mcp/sse` 即可。
 也可用官方 [`@modelcontextprotocol/inspector`](https://github.com/modelcontextprotocol/inspector) 可视化调试。
 
 ---
@@ -228,8 +238,8 @@ pet/
 │     ├─ src/lib.rs        Tauri 入口 + 启动 MCP 服务
 │     ├─ src/mcp/mod.rs    MCP 模块根（双传输常量与文档）
 │     ├─ src/mcp/server.rs 服务生命周期 + 路由装配（/mcp · /mcp/sse · /health）
-│     ├─ src/mcp/streamable.rs Streamable HTTP 传输（DSH 使用）
-│     ├─ src/mcp/sse.rs    旧版 SSE 传输与会话
+│     ├─ src/mcp/streamable.rs Streamable HTTP 传输（主路径，DSH 使用）
+│     ├─ src/mcp/sse.rs    旧版 SSE 传输与会话（仅兼容老客户端）
 │     ├─ src/mcp/rpc.rs    JSON-RPC 方法路由与封套
 │     ├─ src/mcp/tools.rs  工具清单加载 + tools/call 分发（读 src/mcp/tools.json）
 │     ├─ src/state.rs      共享状态 + 事件发射 + 结果回传（查询型 5s oneshot）

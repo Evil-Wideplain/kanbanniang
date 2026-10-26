@@ -10,7 +10,7 @@ sources: [.]
 
 # 看板娘 — Agent Guide
 
-> Tauri + Live2D 桌面看板娘（KanbanNiang），内置 MCP 服务（**Streamable HTTP + SSE 双传输**）：兼容 MCP 的 Agent 可通过工具调用让看板娘做动作、换表情、说话、移动、切换模型。
+> Tauri + Live2D 桌面看板娘（KanbanNiang），内置 MCP 服务（**Streamable HTTP 主路径 + 旧版 SSE 兼容通道**）：兼容 MCP 的 Agent 可通过工具调用让看板娘做动作、换表情、说话、移动、切换模型。
 > 本仓库同时是 **DSH 插件包**：安装到 DSH 后，DSH 启动时自动拉起看板娘，并把工具注册为 `mcp__kanbanniang__*`。
 > 本文件只保留开发必需信息；细则通过内置 skill 按需加载（`.agents/skills/`）。子模块细则就近生效：[[src/tauri/AGENTS.md]]、[[src/frontend/AGENTS.md]]、[[src/plugin/AGENTS.md]]。
 
@@ -25,8 +25,8 @@ sources: [.]
 | `make lint` | Rust 门禁：clippy `--all-targets -- -D warnings` + fmt；Rust 改动必过 |
 | `make verify` | 提交前全量门禁（= `make check` + `make unit` + `make lint`） |
 | `make score` | Rust CRAP 复杂度打分（cargo-crap，无覆盖率数据按 0% 保守计） |
-| `node cmd/client/test.mjs` | MCP 冒烟测试（SSE，需应用已启动）；协议/工具改动必跑 |
-| `node cmd/client/test-streamable.mjs` | MCP 冒烟测试（Streamable HTTP，零依赖，需应用已启动） |
+| `node cmd/client/test.mjs` | MCP 冒烟测试（旧版 SSE 兼容通道，需应用已启动）；协议/工具改动必跑 |
+| `node cmd/client/test-streamable.mjs` | MCP 冒烟测试（Streamable HTTP 主路径，零依赖，需应用已启动） |
 | `npm run plugin:build` | 编译 DSH 宿主插件（`src/plugin` → `lib/`） |
 | `npm run plugin:install` | 安装到 DSH desktop profile（自动 build；需已 `make build`） |
 | `npm run plugin:uninstall` | 从 DSH desktop profile 卸载 |
@@ -41,7 +41,7 @@ sources: [.]
 | 目录 | 职责 |
 |------|------|
 | `src/frontend/` | 前端（feature+shared 分包：`app/` 入口、`shared/` 契约与 IPC、`mascot/`+`settings/`+`debug/` 功能域、`styles/`）：Live2D 渲染、MCP 指令分发、模型热切换、DOM 气泡、设置页 + 调试面板（调试面板仅开发构建）（细则 [[src/frontend/AGENTS.md]]） |
-| `src/tauri/` | Rust 后端：Tauri 应用装配 + axum MCP 双传输服务（Streamable HTTP + SSE）+ `/health` + 设置持久化与端口热重启 / 窗口置顶 / 开机自启 / 窗口平滑移动 `move_window` / 调试命令 `mcp_debug_call`（细则 [[src/tauri/AGENTS.md]]） |
+| `src/tauri/` | Rust 后端：Tauri 应用装配 + axum MCP 服务（**Streamable HTTP 主路径 + 旧版 SSE 兼容通道**）+ `/health` + 设置持久化与端口热重启 / 窗口置顶 / 开机自启 / 窗口平滑移动 `move_window` / 调试命令 `mcp_debug_call`（细则 [[src/tauri/AGENTS.md]]） |
 | `src/plugin/` | DSH 宿主插件半侧（TS → `lib/`）：读取应用设置解析 MCP 端点、发布 `mascotStartup` 服务、探活/拉起看板娘、双写插件日志（细则 [[src/plugin/AGENTS.md]]） |
 | `cordis.patch.yml` | DSH bundle patch：插入宿主插件 + `@deepseek-ai/dsh-mcp-client` 两行（工具命名空间 `mcp__kanbanniang__*`） |
 | `scripts/install-dsh-plugin.mjs` | 安装/卸载到 DSH profile（调用桌面端自带 `dsh.cmd`，含 build 与校验） |
@@ -50,15 +50,15 @@ sources: [.]
 | `cmd/` | MCP 冒烟测试脚本（`client/test.mjs`、`client/test-streamable.mjs`） |
 | `models/` | Live2D 模型资源（gitignore，不入库；见 `models/README.md`） |
 
-技术栈：Tauri 2（Windows WebView2）；Rust edition 2021 / MSRV 1.77 + axum；TypeScript（strict）+ Vite，无框架；pixi.js v6 + pixi-live2d-display（Live2D）。协议：MCP over Streamable HTTP（`POST 127.0.0.1:7432/mcp`）与旧版 SSE（`/mcp/sse`），JSON-RPC 2.0；端口与启用状态可在设置页配置（关闭 MCP 后看板娘仍独立运行）。DSH 插件半侧复用同一端点，DSH 侧工具名 `mcp__kanbanniang__<tool>`。
+技术栈：Tauri 2（Windows WebView2）；Rust edition 2021 / MSRV 1.77 + axum；TypeScript（strict）+ Vite，无框架；pixi.js v6 + pixi-live2d-display（Live2D）。协议：MCP over Streamable HTTP（`POST 127.0.0.1:7432/mcp`，**主路径**）与旧版 SSE（`/mcp/sse`，MCP `2024-11-05` 的传输、已被取代，**仅兼容老客户端**），JSON-RPC 2.0；端口与启用状态可在设置页配置（关闭 MCP 后看板娘仍独立运行）。DSH 插件半侧复用同一端点，DSH 侧工具名 `mcp__kanbanniang__<tool>`。
 
 ## 核心链路
 
 ```
 DSH（插件系统 + MCP 客户端）        Claude Desktop 等
-   │ Streamable HTTP                    │ SSE / Streamable HTTP
+   │ Streamable HTTP                    │ Streamable HTTP / 旧版 SSE
    ▼                                    ▼
-Rust: axum MCP 服务（src/tauri，/mcp · /mcp/sse · /health）
+Rust: axum MCP 服务（src/tauri，/mcp 主 · /mcp/sse 兼容 · /health）
    │  Tauri 事件 mascot:action
    ▼
 WebView 前端（src/frontend）── 查询型：mascot:result 回传（oneshot，5s 超时）
@@ -73,6 +73,7 @@ DSH 启动 → src/plugin 宿主插件（读 settings.json 端口 → provide ma
 
 - 依赖单向：表现 → 应用 → 领域；基础设施向领域契约收敛；跨层走类型化契约，禁止裸 `any` / 无结构字符串。
 - 契约先行：工具唯一来源 `src/mcp/tools.json`；事件契约 `types.ts` ↔ `state.rs` 成对维护；设置契约 `MascotSettings` ↔ `config.rs` 成对维护（启用 MCP / 端口 / 模型 / 置顶 / 视线跟随 / 不透明度 / 开机自启）；通道 `mascot:action` / `mascot:result` / `mascot:settings`。
+- 协议版本按客户端回显：`initialize` 的 `protocolVersion` 取自客户端请求并校验受支持列表（`rpc.rs::SUPPORTED_PROTOCOL_VERSIONS`），**不得硬编码单一版本**——两条传输分属 `2024-11-05` 与 `2025-03-26+`，写死任一版本都会对另一条自相矛盾。新增受支持版本时同步该常量与单测。
 - MCP 端点单一来源：看板娘 `settings.json` 的 `mcpEnabled` / `mcpPort`（插件读取）；`cordis.patch.yml` 只声明依赖与兜底，不得再写一份端口；插件通过 `mascotStartup` 服务把 URL 交给 MCP 客户端行。宿主插件**任何失败路径都必须 `ctx.provide`**，否则 inject 该服务的行会 PENDING 并导致 DSH 启动失败。
 - 注释与日志一律中文、带模块前缀；运行日志必须可查（Rust 经 `log::info!`/`log::warn!`/`log::error!` 门面、由 tauri-plugin-log 双写 stderr+文件，前端 `[mascot]` 日志经官方插件 JS 桥自动转发落盘，DSH 宿主插件日志双写 `<DSH_HOME>/kanbanniang/plugin.log`）；Rust 错误用 `Result` 传播，禁裸 `unwrap` / `expect` / `panic`（lint 强制，受控例外仅 `tools.rs::manifest`）。
 - DSH 宿主插件（`src/plugin/`）不 import DSH 内部包（安装目录无法保证解析）；只按用到的能力镜像 Cordis 契约（`dsh.ts`）。协议字段（tools.json）仍是唯一工具来源，插件不重复定义工具。

@@ -65,10 +65,10 @@ where
     F: Future<Output = ()> + Send + 'static,
 {
     let app = Router::new()
-        // 旧版 SSE 传输：GET 建流 + POST 投递消息。
+        // 旧版 SSE 传输（已废弃，仅兼容）：GET 建流 + POST 投递消息。
         .route("/mcp/sse", get(sse_handler))
         .route("/mcp/messages", post(post_handler))
-        // Streamable HTTP 传输：单端点承载 JSON-RPC（DSH 的官方 MCP 客户端使用）。
+        // Streamable HTTP 传输（主路径）：单端点承载 JSON-RPC（DSH 的官方 MCP 客户端使用）。
         .route(
             "/mcp",
             get(streamable::get_handler)
@@ -81,7 +81,7 @@ where
         .with_state(state);
 
     info!(
-        "[mcp] MCP 服务已启动: SSE http://{}/mcp/sse · Streamable HTTP http://{}/mcp",
+        "[mcp] MCP 服务已启动: Streamable HTTP http://{}/mcp（主）· 旧版 SSE http://{}/mcp/sse（兼容）",
         listener.local_addr()?,
         listener.local_addr()?
     );

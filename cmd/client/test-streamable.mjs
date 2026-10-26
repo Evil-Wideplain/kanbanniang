@@ -76,8 +76,10 @@ async function main() {
   assert(getProbe.status === 405, `GET /mcp 应回 405，实际 ${getProbe.status}`);
   process.stdout.write('✅ GET /mcp → 405（无服务端推送，符合预期）\n');
 
+  // 本通道属 Streamable HTTP，故声明其引入版本，并校验服务端按请求回显（不硬编码旧版本）。
+  const requestedVersion = '2025-03-26';
   const init = await rpc('initialize', {
-    protocolVersion: '2024-11-05',
+    protocolVersion: requestedVersion,
     capabilities: {},
     clientInfo: { name: 'kanbanniang-streamable-smoke', version: '0.1.0' },
   });
@@ -85,7 +87,14 @@ async function main() {
   assert(typeof init.sessionId === 'string' && init.sessionId !== '', 'initialize 未下发 Mcp-Session-Id');
   const serverInfo = init.body?.result?.serverInfo;
   assert(serverInfo?.name === 'kanbanniang', 'serverInfo.name 不匹配');
-  process.stdout.write(`✅ initialize: ${serverInfo.name} v${serverInfo.version} session=${init.sessionId}\n`);
+  const negotiated = init.body?.result?.protocolVersion;
+  assert(
+    negotiated === requestedVersion,
+    `协议版本应回显 ${requestedVersion}，实际 ${String(negotiated)}`,
+  );
+  process.stdout.write(
+    `✅ initialize: ${serverInfo.name} v${serverInfo.version} 协议=${negotiated} session=${init.sessionId}\n`,
+  );
 
   const notified = await notify('notifications/initialized', init.sessionId);
   assert(notified === 202, `initialized 通知应回 202，实际 ${notified}`);
