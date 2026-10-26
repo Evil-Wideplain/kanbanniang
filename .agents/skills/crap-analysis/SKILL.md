@@ -85,7 +85,7 @@ cd src/tauri && cargo crap --lcov lcov.info
 
 剩余 CRAP 30 一档的分支多为其语义本身（协议分发 / 校验 / 平台 API 读写），继续拆收益递减；真正的降分杠杆是补测试（cov 上升）。
 
-已补 Rust 单测（`config.rs` 校验/默认值、`mcp/rpc.rs` 路由/封套、`mcp/sse.rs` 请求解析、`mcp/tools.rs` 清单投影，`cargo test --lib`），但尚未接入覆盖率：本机 GNU 工具链的测试 exe 存在链接失败（`.cargo/config.toml` 已记录的 rust-lld 问题），`cargo llvm-cov` 暂无法本地产出 lcov。修复该工具链后可 `cargo llvm-cov --lcov --output-path lcov.info` + `cargo crap --lcov lcov.info` 让分数显著下降。
+已补 Rust 单测（`config.rs` 校验/默认值、`mcp/rpc.rs` 路由/封套、`mcp/sse.rs` 请求解析、`mcp/tools.rs` 清单投影，`cargo test --lib`），但尚未接入覆盖率：本机仍缺 `cargo llvm-cov` 所需的插桩测试链路，`--lcov` 暂无法本地产出。注意此前「测试 exe 链接失败」的说法已不成立——那是**运行时缺应用清单**（`comctl32!TaskDialogIndirect` 属 v6 导出，测试目标未链接 `tauri-build` 生成的 Windows 资源，加载期即 `0xC0000139`），已由 `src/tauri/build.rs::link_windows_resource_to_tests` 修复，`cargo test --lib` 现在可直接跑。接入覆盖率后 `cargo llvm-cov --lcov --output-path lcov.info` + `cargo crap --lcov lcov.info` 可让分数显著下降。
 
 重构这些热点时以「分数不继续上升」为约束；重构后重跑 `make score`，把新基线同步到本文件与 `src/tauri/AGENTS.md`。
 
