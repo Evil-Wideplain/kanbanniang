@@ -37,6 +37,7 @@
   `/health` 供插件探活。两条路径共用同一套 JSON-RPC 与工具实现。
 - **动作链路**：Agent 调用工具 → axum 收到 `tools/call` → 通过 Tauri 事件 `mascot:action` 通知前端 → 前端驱动 Live2D 看板娘执行。
 - **查询链路**：`list_motions` / `list_expressions` / `get_status` / `set_model` / `list_models` 这类查询型工具，前端执行后通过 `mascot:result` 事件把结果回传，Rust 端用 oneshot 通道等结果（超时 5s）。
+- **导入链路**：把 `.zip` 压缩包或模型文件夹**拖进看板娘窗口** → Rust 解析 `*.model3.json` 并落盘到应用数据目录 → 前端注册运行时档案并热切换；模型资源经只读协议 `mascot-model://` 提供给 WebView（Windows 上是 `http://mascot-model.localhost/...`）。
 - **DSH 插件链路**：DSH 启动 → 宿主插件探活/拉起看板娘 → 官方 MCP 客户端连接 `/mcp` → 工具注入当前会话。
 
 ---
@@ -47,6 +48,7 @@
 - ✅ **可作为 DSH 插件安装**：DSH 启动自动拉起看板娘，工具以 `mcp__kanbanniang__*` 注入会话
 - ✅ 11 个工具：动作 / 表情 / 说话 / **窗口移动**（平滑滑行）/ 窗口内站位 / 待机 / 列动作 / 列表情 / 查状态 / **运行时换模型** / 列模型
 - ✅ Live2D Cubism 3–5.3 模型即插即用：放入 `models/` 后自动发现并登记
+- ✅ **拖拽导入模型**：把 `.zip` 压缩包或模型文件夹拖进看板娘窗口，自动解析配置、落盘并热切换（也支持一次拖多个）
 - ✅ 透明无边框、置顶窗口，典型的桌面看板娘形态
 
 ---
@@ -84,6 +86,9 @@ node cmd/client/test-streamable.mjs # Streamable HTTP 传输（DSH 同款协议�
 启动后可看到桌面角落出现一个透明置顶的看板娘；两个冒烟脚本会依次调用
 `initialize → tools/list → speak → get_status → list_motions → play_motion → set_expression`，
 你应该能看到看板娘做出对应反应，且脚本打印出返回结果。
+
+> 想换模型不必重新构建：把官方示例模型的 `.zip`（或解压后的模型文件夹）**直接拖进看板娘窗口**，
+> 松开后即解析 `*.model3.json`、导入并热切换，同时把选择记进设置（重启后仍是该模型）。
 
 ---
 
@@ -208,7 +213,15 @@ npm run plugin:uninstall   # dsh plugin --profile desktop remove kanbanniang
 
 ## 接入真实 Live2D
 
-见 [`models/README.md`](./models/README.md)：下载 Cubism SDK 或自备模型、放入 `models/`，构建前会自动扫描登记；如需展示名、缩放/锚点或语义别名，在 `src/frontend/shared/domain/profiles.ts` 的 `MODEL_OVERRIDES` 中补充。运行时用 MCP 工具 `set_model` 热切换模型。Cubism Core 运行时已内置于 `src/frontend/mascot/render/live2d/`，无需手动获取。
+最省事的方式：**把模型包拖进看板娘窗口**（`.zip` 或解压后的文件夹，需含 Cubism 3+ 的 `*.model3.json`）。
+Rust 端会解析配置里的 moc / 贴图 / 动作组 / 表情，校验 moc 与贴图存在、其余引用路径合法后复制到应用数据目录
+（`<app_data_dir>/models/imported-<名字>/`，Windows 一般在 `%APPDATA%` 下）。**同名模型**重复导入会整体覆盖；
+不同名模型即使 id 撞车也会分配 `-2` 保留，不会互相删除。
+导入成功后该模型会出现在设置页芯片列表与 MCP `list_models` 里，可按 id（形如 `imported-haru`）用 `set_model` 切换。
+
+也可以按构建期静态资源接入：见 [`models/README.md`](./models/README.md)：下载 Cubism SDK 或自备模型、放入 `models/`，构建前会自动扫描登记；如需展示名、缩放/锚点或语义别名，在 `src/frontend/shared/domain/profiles.ts` 的 `MODEL_OVERRIDES` 中补充。运行时用 MCP 工具 `set_model` 热切换模型。Cubism Core 运行时已内置于 `src/frontend/mascot/render/live2d/`，无需手动获取。
+
+> 导入的模型不会参与构建期扫描，也不写入仓库；删除 `<app_data_dir>/models/` 下的对应目录即可移除。
 
 ---
 
@@ -220,13 +233,13 @@ pet/
 │  ├─ frontend/            前端（TS + Vite；三窗口入口见 app/）
 │  │  ├─ app/              组合根：main.ts / settings.ts / debug.ts（只接线）
 │  │  ├─ shared/
-│  │  │  ├─ domain/        领域：types（契约+动作表）、profiles（模型档案）、speech/normalize/settings
-│  │  │  ├─ ipc/           基础设施：events / settings-client / window / cursor / log-forward（Tauri 桥）
+│  │  │  ├─ domain/        领域：types（契约+动作表）、profiles（内置+导入档案注册表）、imported（导入契约）、speech/normalize/settings
+│  │  │  ├─ ipc/           基础设施：events / settings-client / model-import / window / cursor / log-forward（Tauri 桥）
 │  │  │  └─ ui/            表现工具：window-controls（自绘标题栏接线）
 │  │  ├─ mascot/           看板娘功能域
-│  │  │  ├─ application/   dispatcher（指令分发，含穷尽性检查）、model-switch（热切换/回滚）
+│  │  │  ├─ application/   dispatcher（指令分发，含穷尽性检查）、model-switch（热切换/回滚）、model-import（拖拽导入用例）
 │  │  │  ├─ render/        live2d/（控制器 + Cubism Core）
-│  │  │  └─ ui/bubble.ts   说话气泡（DOM）
+│  │  │  └─ ui/            bubble.ts（说话气泡）、drop-overlay.ts（拖放浮层）
 │  │  ├─ settings/ui/      设置页 settings-page.ts
 │  │  ├─ debug/            MCP 调试面板：panel / args / ipc / log-view / types
 │  │  └─ styles/           main.css / settings.css / debug.css
@@ -243,6 +256,7 @@ pet/
 │     ├─ src/mcp/rpc.rs    JSON-RPC 方法路由与封套
 │     ├─ src/mcp/tools.rs  工具清单加载 + tools/call 分发（读 src/mcp/tools.json）
 │     ├─ src/state.rs      共享状态 + 事件发射 + 结果回传（查询型 5s oneshot）
+│     ├─ src/model_store.rs 导入模型仓库：解析 .model3.json / zip 解压 / 落盘 / 只读协议 mascot-model
 │     ├─ tauri.conf.json   窗口配置（透明/置顶/无边框）
 │     └─ capabilities/     权限
 ├─ cordis.patch.yml        DSH bundle patch：插入宿主插件 + MCP 客户端两行
@@ -265,6 +279,7 @@ pet/
 
 - Live2D 的「真实口型同步」需接入 AudioEngine + Phoneme，当前 `speak` 仅做气泡与表情反馈。
 - 查询型工具依赖前端在线（窗口开着）；若窗口关闭，查询会 5s 超时。
+- 拖拽导入仅支持 Cubism 3+ 的 `.model3.json`（Cubism 2 的 `.model.json` 会被拒绝）；导入在后台线程做解压/复制，大模型可能短暂无提示，完成或失败后会以气泡反馈。
 - MCP 目前仅本地 `127.0.0.1` 暴露，未做鉴权（桌面本地应用足够；若需远程接入请自行加 token/隧道）。
 - DSH 宿主插件按仓库路径（`link:`）安装，**要求本机已 `make build`**；安装包分发（npm / 市场）尚未配置。
 - 插件日志写到 `<DSH_HOME>/kanbanniang/plugin.log`：桌面端 DSH 不落盘宿主插件 stdout，排查请优先看该文件。

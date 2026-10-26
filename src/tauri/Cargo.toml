@@ -28,6 +28,13 @@ anyhow = "1"
 log = "0.4"
 time = { version = "0.3", features = ["macros", "formatting"] }
 tauri-plugin-autostart = "2"
+# 导入模型压缩包：只用只读 + deflate 后端（复用 flate2 的纯 Rust 后端，不引入 C 依赖）。
+# 版本固定 4.2.0：zip ≥4.4 的 rust-version 已升到 1.82，超过本项目 MSRV 1.77。
+zip = { version = "=4.2.0", default-features = false, features = ["deflate-flate2"] }
+# 只为 zip 的 flate2 选纯 Rust 后端（rust_backend = miniz_oxide）；本 crate 不直接调用 flate2。
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+# 自定义协议 `mascot-model://` 的请求路径百分号解码
+percent-encoding = "2"
 
 # macOS 托盘模板图标需在运行期解码 PNG（Image::from_bytes）；
 # 仅 macOS 路径使用，按目标平台收窄以免拖累 Windows 构建。

@@ -10,7 +10,7 @@ sources: [.]
 
 # 看板娘 — Agent Guide
 
-> Tauri + Live2D 桌面看板娘（KanbanNiang），内置 MCP 服务（**Streamable HTTP 主路径 + 旧版 SSE 兼容通道**）：兼容 MCP 的 Agent 可通过工具调用让看板娘做动作、换表情、说话、移动、切换模型。
+> Tauri + Live2D 桌面看板娘（KanbanNiang），内置 MCP 服务（**Streamable HTTP 主路径 + 旧版 SSE 兼容通道**）：兼容 MCP 的 Agent 可通过工具调用让看板娘做动作、换表情、说话、移动、切换模型。也可直接把 `.zip` 压缩包或模型文件夹拖进窗口导入新模型。
 > 本仓库同时是 **DSH 插件包**：安装到 DSH 后，DSH 启动时自动拉起看板娘，并把工具注册为 `mcp__kanbanniang__*`。
 > 本文件只保留开发必需信息；细则通过内置 skill 按需加载（`.agents/skills/`）。子模块细则就近生效：[[src/tauri/AGENTS.md]]、[[src/frontend/AGENTS.md]]、[[src/plugin/AGENTS.md]]。
 
@@ -40,8 +40,8 @@ sources: [.]
 
 | 目录 | 职责 |
 |------|------|
-| `src/frontend/` | 前端（feature+shared 分包：`app/` 入口、`shared/` 契约与 IPC、`mascot/`+`settings/`+`debug/` 功能域、`styles/`）：Live2D 渲染、MCP 指令分发、模型热切换、DOM 气泡、设置页 + 调试面板（调试面板仅开发构建）（细则 [[src/frontend/AGENTS.md]]） |
-| `src/tauri/` | Rust 后端：Tauri 应用装配 + axum MCP 服务（**Streamable HTTP 主路径 + 旧版 SSE 兼容通道**）+ `/health` + 设置持久化与端口热重启 / 窗口置顶 / 开机自启 / 窗口平滑移动 `move_window` / 调试命令 `mcp_debug_call`（细则 [[src/tauri/AGENTS.md]]） |
+| `src/frontend/` | 前端（feature+shared 分包：`app/` 入口、`shared/` 契约与 IPC、`mascot/`+`settings/`+`debug/` 功能域、`styles/`）：Live2D 渲染、MCP 指令分发、模型热切换、拖拽导入模型（浮层 + 运行时档案注册）、DOM 气泡、设置页 + 调试面板（调试面板仅开发构建）（细则 [[src/frontend/AGENTS.md]]） |
+| `src/tauri/` | Rust 后端：Tauri 应用装配 + axum MCP 服务（**Streamable HTTP 主路径 + 旧版 SSE 兼容通道**）+ `/health` + 设置持久化与端口热重启 / 窗口置顶 / 开机自启 / 窗口平滑移动 `move_window` / 拖拽导入模型（zip/文件夹解析、应用数据目录落盘、只读 `mascot-model://` 协议）/ 调试命令 `mcp_debug_call`（细则 [[src/tauri/AGENTS.md]]） |
 | `src/plugin/` | DSH 宿主插件半侧（TS → `lib/`）：读取应用设置解析 MCP 端点、发布 `mascotStartup` 服务、探活/拉起看板娘、双写插件日志（细则 [[src/plugin/AGENTS.md]]） |
 | `cordis.patch.yml` | DSH bundle patch：插入宿主插件 + `@deepseek-ai/dsh-mcp-client` 两行（工具命名空间 `mcp__kanbanniang__*`） |
 | `scripts/install-dsh-plugin.mjs` | 安装/卸载到 DSH profile（调用桌面端自带 `dsh.cmd`，含 build 与校验） |
@@ -65,6 +65,9 @@ WebView 前端（src/frontend）── 查询型：mascot:result 回传（onesho
    ▼
 Live2D 控制器 → 看板娘响应
 
+拖入 .zip / 模型文件夹 → Tauri 原生拖放事件 → Rust 解析 *.model3.json 并落盘
+  → WebView 注册运行时档案（渲染经只读协议 mascot-model://）→ 热切换 + 记住选择
+
 DSH 启动 → src/plugin 宿主插件（读 settings.json 端口 → provide mascotStartup）
         → 探活 /health → 未运行则拉起 target/release exe → dsh-mcp-client 连同一 URL
 ```
@@ -72,7 +75,7 @@ DSH 启动 → src/plugin 宿主插件（读 settings.json 端口 → provide ma
 ## 编码硬性规则（速记）
 
 - 依赖单向：表现 → 应用 → 领域；基础设施向领域契约收敛；跨层走类型化契约，禁止裸 `any` / 无结构字符串。
-- 契约先行：工具唯一来源 `src/mcp/tools.json`；事件契约 `types.ts` ↔ `state.rs` 成对维护；设置契约 `MascotSettings` ↔ `config.rs` 成对维护（启用 MCP / 端口 / 模型 / 置顶 / 视线跟随 / 不透明度 / 开机自启）；通道 `mascot:action` / `mascot:result` / `mascot:settings`。
+- 契约先行：工具唯一来源 `src/mcp/tools.json`；事件契约 `types.ts` ↔ `state.rs` 成对维护；设置契约 `MascotSettings` ↔ `config.rs` 成对维护（启用 MCP / 端口 / 模型 / 置顶 / 视线跟随 / 不透明度 / 开机自启）；通道 `mascot:action` / `mascot:result` / `mascot:settings`；导入模型契约 `ImportOutcome` ↔ `model_store.rs` 成对维护（命令 `list_imported_models` / `import_models` / `remember_model`，协议 scheme `mascot-model`，id 前缀 `imported-`）。
 - 协议版本按客户端回显：`initialize` 的 `protocolVersion` 取自客户端请求并校验受支持列表（`rpc.rs::SUPPORTED_PROTOCOL_VERSIONS`），**不得硬编码单一版本**——两条传输分属 `2024-11-05` 与 `2025-03-26+`，写死任一版本都会对另一条自相矛盾。新增受支持版本时同步该常量与单测。
 - MCP 端点单一来源：看板娘 `settings.json` 的 `mcpEnabled` / `mcpPort`（插件读取）；`cordis.patch.yml` 只声明依赖与兜底，不得再写一份端口；插件通过 `mascotStartup` 服务把 URL 交给 MCP 客户端行。宿主插件**任何失败路径都必须 `ctx.provide`**，否则 inject 该服务的行会 PENDING 并导致 DSH 启动失败。
 - 注释与日志一律中文、带模块前缀；运行日志必须可查（Rust 经 `log::info!`/`log::warn!`/`log::error!` 门面、由 tauri-plugin-log 双写 stderr+文件，前端 `[mascot]` 日志经官方插件 JS 桥自动转发落盘，DSH 宿主插件日志双写 `<DSH_HOME>/kanbanniang/plugin.log`）；Rust 错误用 `Result` 传播，禁裸 `unwrap` / `expect` / `panic`（lint 强制，受控例外仅 `tools.rs::manifest`）。

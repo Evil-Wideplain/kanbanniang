@@ -9,8 +9,13 @@
  * 语义别名：不同模型的动作组名、表情名各不相同（官方系 Idle/TapBody，
  * 社区模型可能是 standby/flick_head…），通过别名把稳定调用名（idle / speak / neutral …）
  * 映射到该模型的真实名字（键按归一化匹配，忽略大小写与下划线）。
+ *
+ * 除构建期扫描的内置档案外，还支持「运行时导入」档案（拖入 .zip / 模型文件夹，
+ * 后端落盘后经 IPC 注册，见 `shared/domain/imported.ts` 与 `shared/ipc/model-import.ts`）。
  */
 import generatedModels from "./models.generated.json";
+import type { ImportedModel } from "./imported";
+import { profileFromImported } from "./imported";
 
 export interface ModelConfig {
   /** 模型所在目录（models/ 下的子目录，经 Vite publicDir 映射为根路径 /<名>）。 */
@@ -76,9 +81,21 @@ const MODEL_OVERRIDES: Record<string, ModelOverride> = {
   },
 };
 
+/** 构建期扫描出的内置模型（`models.generated.json` 的元素）。 */
+interface ScannedModel {
+  dir: string;
+  file: string;
+}
+
+/**
+ * 扫描结果。显式标注类型：`models/` 被 gitignore，空目录时生成 `[]`，
+ * TS 会把 JSON 模块推断成 `never[]` 导致后续 `.map` 报错（新克隆仓库不能编译）。
+ */
+const scannedModels: ScannedModel[] = generatedModels;
+
 /** 由扫描结果生成 Live2D 档案（叠加静态覆盖）。 */
 function buildLive2dProfiles(): ModelProfile[] {
-  return generatedModels.map(({ dir, file }) => {
+  return scannedModels.map(({ dir, file }) => {
     const ov = MODEL_OVERRIDES[dir] ?? {};
     return {
       id: ov.id ?? dir.toLowerCase(),
@@ -97,15 +114,51 @@ function buildLive2dProfiles(): ModelProfile[] {
   });
 }
 
-/** 全部可切换档案：由 `models/` 扫描结果动态生成。 */
+/** 全部内置档案：由 `models/` 扫描结果动态生成。 */
 export const MODEL_PROFILES: ModelProfile[] = buildLive2dProfiles();
 
-/** 启动时加载的默认档案 id（首个模型；没有模型时为空串）。 */
+/** 启动时加载的默认档案 id（首个内置模型；没有模型时为空串）。 */
 export const DEFAULT_MODEL_ID = MODEL_PROFILES[0]?.id ?? "";
 
-/** 全部档案 id（模型切换错误信息与校验复用；只在此处派生一次）。 */
+/** 内置档案 id 列表（构建期已知；运行时导入的 id 见 `allModelIds()`）。 */
 export const MODEL_IDS: string[] = MODEL_PROFILES.map((p) => p.id);
 
+/**
+ * 运行时导入档案（拖入即注册）。
+ * 保持数组引用稳定并原地替换内容：模型管理器 / 设置页可能在启动时取过引用，
+ * 重新注册（导入新模型或覆盖同名模型）后无需重新取。
+ */
+const importedProfiles: ModelProfile[] = [];
+
+/**
+ * 用最新一批导入模型替换运行时档案，返回注册后的档案列表。
+ * `assetOrigin` 由基础设施层按平台解析（领域层不读 `navigator`）。
+ */
+export function registerImportedModels(
+  models: ImportedModel[],
+  assetOrigin: string,
+): ModelProfile[] {
+  const next = models.map((model) => profileFromImported(model, assetOrigin));
+  importedProfiles.splice(0, importedProfiles.length, ...next);
+  return next;
+}
+
+/** 当前运行时导入档案（只读视图，供展示/调试）。 */
+export function importedModelProfiles(): readonly ModelProfile[] {
+  return importedProfiles;
+}
+
+/** 全部可选档案：内置（构建期扫描）+ 导入（运行时）。 */
+export function allProfiles(): ModelProfile[] {
+  return [...MODEL_PROFILES, ...importedProfiles];
+}
+
+/** 全部可选档案 id（错误信息与校验复用）。 */
+export function allModelIds(): string[] {
+  return allProfiles().map((p) => p.id);
+}
+
+/** 按 id 查档案：先内置后导入（id 前缀已隔离，两类不会重名）。 */
 export function getProfile(id: string): ModelProfile | undefined {
-  return MODEL_PROFILES.find((p) => p.id === id);
+  return MODEL_PROFILES.find((p) => p.id === id) ?? importedProfiles.find((p) => p.id === id);
 }

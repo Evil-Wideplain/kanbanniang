@@ -12,7 +12,7 @@ sources: [.]
 
 ## 职责
 
-桌面应用后端与 MCP 服务（**Streamable HTTP 主路径 + 旧版 SSE 兼容通道**）：接收 Agent 的 JSON-RPC 工具调用，经 Tauri 事件转发给前端看板娘，并等待查询型工具的结果回传（5s 超时）。额外提供 `/health` 供 DSH 插件探活。包根即本目录，所有 cargo 命令在此执行（workdir: `src/tauri`）。
+桌面应用后端与 MCP 服务（**Streamable HTTP 主路径 + 旧版 SSE 兼容通道**）：接收 Agent 的 JSON-RPC 工具调用，经 Tauri 事件转发给前端看板娘，并等待查询型工具的结果回传（5s 超时）。额外提供 `/health` 供 DSH 插件探活；另把用户拖入的模型包解析、落盘并经只读协议提供资源。包根即本目录，所有 cargo 命令在此执行（workdir: `src/tauri`）。
 
 ## 关键文件
 
@@ -28,7 +28,8 @@ sources: [.]
 | `src/mcp/debug.rs` | 应用内调试面板的 MCP 入口：`debug_call` 自造 JSON-RPC id 复用 `tools::call_tool` 完整协议封套，返回整帧响应 | 只做调试接线；复用真链路但绕过传输层 |
 | `src/state.rs` | 共享状态与事件端口：`mascot:action` 发射、`mascot:result` 等待（5s oneshot） | 跨线程表结构一律经访问器读写；类型与前端 `types.ts` 成对镜像 |
 | `src/config.rs` | 设置持久化：`settings.json` 读写（缺失/损坏回退默认值）+ 端口/不透明度校验 + 内存副本 `SettingsStore` | 只做持久化；字段与前端 `shared/domain/types.ts` 的 `MascotSettings` 成对镜像；DSH 插件从该文件读取 `mcpPort` |
-| `src/commands.rs` | 设置命令（接口层）：`get_settings` / `get_runtime_status`（MCP 实际端口/运行态）/ `save_settings`（MCP 开关与端口变更启停服务、模型变更热切换、窗口置顶/开机自启作用于运行态、不透明度与视线跟随广播 `mascot:settings`）；`apply_startup` 启动时应用运行态偏好；`move_window` 主窗口平滑滑到工作区归一化坐标（600ms smoothstep，`WindowGlideGuard` 代次守卫防并发抢占，供 MCP `move` 工具经前端分发调入） | 只做用例编排；持久化交 `config.rs`、启停交 `mcp::ServiceManager`、窗口交 Tauri 窗口 API、自启交 autostart 插件 |
+| `src/commands.rs` | 设置命令（接口层）：`get_settings` / `get_runtime_status`（MCP 实际端口/运行态）/ `save_settings`（MCP 开关与端口变更启停服务、模型变更热切换、窗口置顶/开机自启作用于运行态、不透明度与视线跟随广播 `mascot:settings`）；`apply_startup` 启动时应用运行态偏好；`move_window` 主窗口平滑滑到工作区归一化坐标（600ms smoothstep，`WindowGlideGuard` 代次守卫防并发抢占，供 MCP `move` 工具经前端分发调入）；导入模型命令 `list_imported_models` / `import_models`（阻塞 IO 走 `spawn_blocking`）/ `remember_model`（只改 `modelId` 落盘，避免整份设置并发覆盖） | 只做用例编排；持久化交 `config.rs`、启停交 `mcp::ServiceManager`、窗口交 Tauri 窗口 API、自启交 autostart 插件、模型解析/落盘交 `model_store.rs` |
+| `src/model_store.rs` | 导入模型仓库（基础设施层）：扫描/解析 `*.model3.json`（`FileReferences` 的 moc/贴图/动作组/表情）、校验引用路径合法与必需文件存在、zip 解压（防解压炸弹与路径穿越，按实际字节计数）、临时目录暂存 → 旧目录挪 `.trash` → 新目录上位（失败回滚）落盘到 `<app_data_dir>/models/imported-*/`、仅同名模型覆盖（撞 slug 的不同名让位 `-2`）、进程级串行导入 + 残留临时目录清理、`list()` 回读（容错单条目，meta 记录主配置文件名）、只读协议 `mascot-model://<id>/<相对路径>` 的请求处理（含 CORS 头与目录越界二次校验） | 只做解析/落盘/只读服务；不碰设置与窗口，命令编排在 `commands.rs` |
 | `src/debug.rs` | 应用内 MCP 调试面板：命令 `mcp_debug_call`（始终注册）复用 `mcp::debug_call` 工具路由；`create_window` 仅在 `debug_assertions` 下创建 `debug.html` 窗口 | 只做调试接线；窗口创建仅开发构建，release 无该窗口故命令不可触达 |
 | `src/log_setup.rs` | 日志装配：`tauri-plugin-log` 配置（级别/滚动/targets/落盘位置/行格式）与注册入口 `plugin()`；`file_dir()` 暴露实际落盘目录给启动日志 | 只做装配；落盘位置优先 exe 同目录、不可写回退 LogDir；禁止绕过 `log` 门面写日志 |
 | `src/tray.rs` | 系统托盘装配：托盘图标（按平台选素材）+ 右键菜单（显隐、设置、[开发构建] MCP 调试、退出）+ 左键切换显隐；`init()` 供组合根调用 | 只做托盘与窗口显隐接线；常驻语义（关窗转隐藏、macOS Dock 隐藏）在 `lib.rs` |
@@ -83,6 +84,23 @@ GET /health ──▶ {"ok":true,"service":"kanbanniang","transport":[...],...}�
 
 关键约束：MCP 可独立开关（`mcp_enabled` 缺省 true，后向兼容旧配置）；关闭时不监听端口，看板娘仍独立运行。监听端口不再是编译期常量（`mcp::DEFAULT_MCP_PORT` 仅作默认值），改用配置端口启动；端口切换必须先建后销，避免旧服务释放端口前的占用窗口。启动时 `commands::apply_startup` 用设置对齐「主窗口置顶 + 开机自启」，不透明度与视线跟随由主窗口前端自行读取应用。Tauri v2 / WebView2 无窗口级不透明度 API，故不透明度落在前端画布上（透明窗口里等价于看板娘半透明）。
 
+### 导入模型链路（拖入 .zip / 模型文件夹）
+
+```
+前端拖放（Tauri 原生 drag-drop，拿到本机绝对路径）
+  → invoke import_models{paths} → model_store::import
+      ├─ 文件夹：递归找全部 *.model3.json（深度上限 6，跳过 . 开头/__MACOSX）
+      ├─ .zip：解压到 <app_data>/models/.tmp-<uuid>（拒绝越界路径，限制条目数/解压总量；按实际写出字节计数防「声明大小撒谎」）
+      ├─ 解析 FileReferences（Moc / Textures / Motions / Expressions），moc 与贴图必须存在，其余引用路径必须合法（缺失仅告警）
+      └─ 逐模型：复制到 .tmp-<uuid> → 写 mascot-import.json（含主配置文件名）→ 旧目录挪成 .trash-<uuid> → 新目录改名上位 → 删 .trash
+  → 返回 {models, errors}（单路径失败不影响其它路径）
+  → 前端 registerImportedModels 注册运行时档案 → set_model 热切换 → remember_model 落盘选择
+```
+
+- id 规则：`imported-<slug>`（slug 只保留 ASCII 字母数字与 `-_.`）。**只有同名模型**重复导入才整体覆盖；slug 撞车的不同名模型（如两个中文名都折成 `model`）会分配 `-2` 让位，绝不互相删除。导入在进程内用 `IMPORT_LOCK` 串行，并在拿锁后清理残留 `.tmp-*` / `.trash-*`。
+- 资源访问：主窗口用 `http://mascot-model.localhost/<id>/<相对路径>`（macOS/Linux 为 `mascot-model://localhost/...`）由 `register_uri_scheme_protocol` 提供；响应必须带 `Access-Control-Allow-Origin: *`（页面与协议源不同源，Live2D 的 XHR/贴图都走 CORS），JSON 配置必须回 `application/json`（模型加载器按内容解析）。
+- 文件名安全：协议侧按 `id` 白名单 + 相对路径分段校验 + `canonicalize` 前缀二次校验，任何一步不通过都回 404，不泄露路径。
+
 ### 质量门禁与工具链（AI 代码必跑）
 
 门禁（已配置，提交前必过；快捷入口：仓库根 `make lint`）：
@@ -130,7 +148,9 @@ lint 配置唯一来源：`Cargo.toml` 的 `[lints]` 表与 `rustfmt.toml`。启
 - 运行期路径禁止 `unwrap` / `expect` / `panic!`（由 lint 门禁强制）；仅启动期 fail-fast 可受控例外，且必须 `#[allow]` + 中文注释说明理由（现有唯一例外：`tools.rs::manifest`）。
 - 互斥锁一律走 `AppStateInner` 访问器（`sessions()` / `pending()`）：锁中毒自愈（`PoisonError::into_inner`）而非级联 panic；禁止 `lock().unwrap()`。
 - 超时/并发/回滚路径必须有防护且写清原因：查询型 5s 超时后必须清理 `pending` 表（防泄漏）；SSE 会话断开由 `SessionGuard::drop` 清理 `sessions` 表（防重连累积泄漏）；SSE `broadcast` 落后丢弃策略（Lagged）不得改为阻塞等待。注意 `sessions` / `SessionGuard` / `Lagged` 这组状态**只为 SSE 兼容通道存在**，Streamable HTTP 是无状态的；若要下线 SSE，这条链可整段删除（`rpc` / `tools` / `state.pending` 均不受影响）。
-- 事件契约字段改动必须与 `src/frontend/shared/domain/types.ts` 同步；`#[serde(default)]` 等兼容标记不得随意移除。设置契约同理由 `config.rs::Settings` ↔ `types.ts::MascotSettings` 成对维护（camelCase）。
+- 事件契约字段改动必须与 `src/frontend/shared/domain/types.ts` 同步；`#[serde(default)]` 等兼容标记不得随意移除。设置契约同理由 `config.rs::Settings` ↔ `types.ts::MascotSettings` 成对维护（camelCase）。导入模型契约 `ImportedModel` / `ImportOutcome` ↔ `shared/domain/imported.ts` 成对维护（命令名与协议 scheme 也在两侧成对）。
+- 用户数据目录不可假设可写：落盘失败必须回滚临时目录并给中文错误（`model_store.rs` 已按此实现）；任何新增用户文件都放 `<app_data_dir>/` 下并走 `?` 传播，不要 `unwrap`。
+- zip 解压是攻击面：新增解压路径必须经过 `enclosed_name` 校验、限制条目数/总字节数，并拒绝绝对路径与 `..`（参见 `extract_zip` 与单测）。
 - edition 2021、MSRV 1.77（`Cargo.toml`）；使用更高版本要求的语法/API 时必须同步更新 `rust-version`。
 - 常量集中定义（如 `mcp::DEFAULT_MCP_PORT`、查询超时 5s）；端口以设置为准，魔法值必须附中文注释（如 SSE 缓冲 64）。
 - 依赖变更必须同步 `Cargo.lock`，并跑一次门禁命令。
@@ -141,6 +161,8 @@ lint 配置唯一来源：`Cargo.toml` 的 `[lints]` 表与 `rustfmt.toml`。启
 - 依赖 `src/mcp/tools.json`（`include_str!` 编译期嵌入）。
 - 依赖 `tauri-plugin-autostart`（开机自启：Windows 写 `HKCU\...\Run`，macOS 走 LaunchAgent）；插件 `setup` 阶段托管 `AutoLaunchManager`，经 `ManagerExt::autolaunch()` 调用，故 `apply_startup`/`save_settings` 必须在插件注册之后执行。
 - 与前端仅通过「Tauri 事件契约 + JSON 字段」耦合（`state.rs` ↔ `types.ts`），不依赖前端代码。
+- 依赖 `zip`（只开 `deflate-flate2` 后端，复用已有 flate2 纯 Rust 实现，不引入 C 依赖；版本按 MSRV 1.77 固定为 `=4.2.0`，升级前先确认 `rust-version`）与 `percent-encoding`（协议请求路径解码）。
+- 导入模型只依赖文件系统与 `app_data_dir()`：协议 scheme 常量 `model_store::ASSET_SCHEME` 由 `lib.rs` 注册，前端同名常量在 `shared/domain/imported.ts` 成对维护。
 - 本仓库设置了 rustup 目录 override：工具链为 `stable-x86_64-pc-windows-gnu`（`rustup override list` 可查）；工具安装/构建行为以该工具链为准。
 
 ## References

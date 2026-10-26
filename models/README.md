@@ -5,6 +5,23 @@
 > Cubism Core 运行时 `live2dcubismcore.min.js`（6.0.1，支持 Cubism 3–5.3 / moc3 v1–v6）已内置于
 > `src/frontend/mascot/render/live2d/` 并随仓库提交，由 Vite 打包进构建产物，无需手动获取。
 
+## 0. 最省事：拖拽导入（不需要放进 `models/`）
+
+把模型包**直接拖到看板娘窗口**，松开即导入：
+
+- `.zip` 压缩包（压缩包内任意层级含 `*.model3.json` 即可，允许外面套一层文件夹；macOS 的 `__MACOSX` 自动忽略）；
+- 或解压后的模型文件夹（整目录拖入，可一次拖多个）。
+
+导入时解析 `*.model3.json` 的 moc / 贴图 / 动作组 / 表情，校验 moc 与贴图确实存在、其余引用路径合法
+（缺可选文件仅告警），再复制到 `<app_data_dir>/models/imported-<名字>/`（Windows 一般在 `%APPDATA%` 下）。
+**同名模型**重复导入会整体覆盖；不同名模型即使 id 撞车（中文名会被折成 `model`）也会分配 `-2` 保留，不会互相删除。
+导入成功后立即热切换，并出现在设置页芯片与 MCP `list_models` 中（id 形如 `imported-haru`，可用 `set_model` 切换）。
+
+限制：仅支持 Cubism 3+ 的 `.model3.json`；Cubism 2 的 `.model.json` 会被拒绝并提示。
+移除导入的模型：退出应用后删除 `<app_data_dir>/models/` 下对应目录即可。
+
+下面的步骤是「构建期静态资源」接入方式：模型随仓库走、参与自动发现，适合长期内置的模型。
+
 ## 1. 放入模型文件
 
 1. 用官方 SDK 的示例模型，或自己导出的模型（需 Cubism 3–5.3 的 `*.model3.json` 及其配套 `motions/`、`expressions/` 目录）。
@@ -84,6 +101,8 @@ set_model {"model":"natori"}  → {ok:true, model, mode, modelFile}
 - 报 404 找不到模型 → 检查 `modelDir`/`modelFile` 是否匹配 `models/...` 实际路径。
 - 加载模型报 `Unknown error` → 通常是 moc3 版本高于内置 Core 支持上限；当前 Core 6.0.1 最高支持 Cubism 5.3（moc3 v6），更高版本需替换 `live2dcubismcore.min.js` 为官方最新 Core。
 - 启动时模型加载失败会记录错误并保持「看板娘未加载」，不会 crash；修正模型后可经 `set_model` 重新加载。
+- 拖入模型无反应 / 提示导入失败 → 看气泡与日志里的具体原因：常见是压缩包内没有 `*.model3.json`、贴图/moc 缺失、或误用了 Cubism 2 的 `.model.json`。
+- 导入模型后设置页没出现新芯片 → 设置窗口会重新聚焦时刷新；仍不出现请重启应用（芯片来自后端仓库列表）。
 - `set_model` 切换失败会**保留原模型**（回滚），失败原因在 MCP 返回的 `{ok:false,error}` 中。
 
 > 小贴士：`npm run dev`（纯浏览器）也能预览前端，但 MCP 事件通道只有在 Tauri 运行时才生效；调试模型渲染可用 `npm run dev`，调试 Agent 调用请用 `npm run tauri:dev`。

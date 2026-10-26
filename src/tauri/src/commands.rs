@@ -9,6 +9,9 @@
 //! 另提供窗口平滑移动命令 `move_window`（MCP `move` 工具经前端分发调入），
 //! 把主窗口滑到当前显示器工作区的归一化坐标。
 //!
+//! 以及导入模型命令：`list_imported_models` / `import_models`（拖入文件夹或 zip 后
+//! 解析并落盘）与 `remember_model`（记住当前模型，避免把整份设置再从主窗口写一遍）。
+//!
 //! 装配（`lib.rs`）负责托管所需的共享状态；本模块只做用例编排。
 
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -21,6 +24,7 @@ use tauri_plugin_autostart::ManagerExt;
 
 use crate::config::{self, Settings, SettingsStore};
 use crate::mcp::ServiceManager;
+use crate::model_store::{self, ImportOutcome, ImportedModel};
 use crate::state::AppStateInner;
 use crate::tray;
 
@@ -407,4 +411,51 @@ pub async fn move_window(
         out.superseded
     );
     Ok(out)
+}
+
+/// 列出已导入模型（主窗口启动时注册档案、设置页展示用）。
+#[tauri::command]
+pub fn list_imported_models(app: AppHandle) -> Result<Vec<ImportedModel>, String> {
+    model_store::list(&app).map_err(|e| {
+        log::error!("[model_store] 读取导入模型列表失败: {e}");
+        format!("读取导入模型列表失败: {e}")
+    })
+}
+
+/// 导入拖入的模型路径（文件夹或 .zip）：解析配置并落盘，返回成功项与逐路径失败原因。
+///
+/// 解压 / 复制属阻塞 IO，放到阻塞线程池执行，避免占用异步运行时工作线程。
+#[tauri::command]
+pub async fn import_models(app: AppHandle, paths: Vec<String>) -> Result<ImportOutcome, String> {
+    if paths.is_empty() {
+        return Ok(ImportOutcome::default());
+    }
+    tauri::async_runtime::spawn_blocking(move || model_store::import(&app, &paths))
+        .await
+        .map_err(|e| format!("模型导入任务失败: {e}"))
+}
+
+/// 记住当前模型：只更新设置里的 `model_id` 并落盘。
+///
+/// 不复用 `save_settings` 是为了避免主窗口拿启动时的整份设置回写、
+/// 覆盖掉设置窗口在此期间改过的端口 / 不透明度等字段。
+#[tauri::command]
+pub fn remember_model(
+    app: AppHandle,
+    store: State<'_, SettingsStore>,
+    model_id: String,
+) -> Result<(), String> {
+    let current = store.get();
+    if current.model_id == model_id {
+        return Ok(());
+    }
+    let mut next = current;
+    next.model_id = model_id.clone();
+    config::save(&app, &next).map_err(|e| {
+        log::warn!("[model_store] 记住当前模型失败: {e}");
+        format!("保存当前模型失败: {e}")
+    })?;
+    store.set(next);
+    log::info!("[model_store] 已记住当前模型 {model_id}");
+    Ok(())
 }

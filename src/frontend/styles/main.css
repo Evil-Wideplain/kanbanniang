@@ -63,3 +63,50 @@ body {
 .bubble.hidden {
   opacity: 0;
 }
+
+/* ---- 拖放导入提示浮层（mascot/ui/drop-overlay.ts 动态创建） ----
+   拖入 .zip / 模型文件夹时覆盖画布显示；pointer-events: none 保证不干扰拖放本身。 */
+.drop-overlay {
+  position: fixed;
+  inset: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+  border: 2px dashed rgba(255, 255, 255, 0.86);
+  border-radius: 18px;
+  background: rgba(30, 27, 36, 0.56);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+  z-index: 20;
+}
+
+.drop-overlay.show {
+  opacity: 1;
+}
+
+.drop-overlay-card {
+  color: #fff;
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  text-align: center;
+}
+
+.drop-overlay-icon {
+  display: block;
+  font-size: 30px;
+  line-height: 1.1;
+}
+
+.drop-overlay-title {
+  margin-top: 8px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.drop-overlay-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  opacity: 0.78;
+}

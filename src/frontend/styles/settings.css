@@ -349,6 +349,25 @@ input[type="number"]:focus {
   box-shadow: 0 5px 12px rgba(255, 122, 138, 0.36);
 }
 
+/* 运行时导入的模型：虚线描边与内置模型区分（动作/表情数量在 title 里） */
+.chip.imported {
+  border: 1px dashed rgba(255, 122, 138, 0.55);
+}
+
+.chip.imported.on {
+  border-color: transparent;
+}
+
+/* 行内说明（如导入模型入口）：小号弱化文本，与右侧控件同排 */
+.hint {
+  flex: 1 1 0;
+  min-width: 0;
+  color: var(--settings-muted);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: right;
+}
+
 /* 开关：胶囊轨道 + 滑块，选中态薄荷绿 */
 .sw {
   position: relative;

@@ -7,8 +7,9 @@
  * - 端口：改动会重启 MCP 服务，需点「保存」，期间状态显示「重启中…」；
  * - 运行状态与地址来自后端真实运行态（get_runtime_status），非写死文本。
  */
-import { MODEL_PROFILES } from "@/shared/domain/profiles";
+import { allProfiles, importedModelProfiles } from "@/shared/domain/profiles";
 import { DEFAULT_SETTINGS, validateOpacity, validatePort } from "@/shared/domain/settings";
+import { loadImportedProfiles } from "@/shared/ipc/model-import";
 import { getRuntimeStatus, loadSettings, saveSettings } from "@/shared/ipc/settings-client";
 import type { MascotSettings } from "@/shared/domain/types";
 
@@ -17,6 +18,9 @@ let selectedModelId: string = DEFAULT_SETTINGS.modelId;
 
 /** 最近一次成功持久化的设置（自动保存以此为基线，避免带上未保存的端口输入）。 */
 let persisted: MascotSettings = { ...DEFAULT_SETTINGS };
+
+/** 芯片刷新是否进行中（窗口 focus 事件可能连发，避免并发重绘）。 */
+let refreshing = false;
 
 /** 表单控件的引用集合（初始化时收集，避免各函数重复查询）。 */
 interface Controls {
@@ -56,8 +60,15 @@ export async function mountSettingsPage(): Promise<void> {
     status,
   } = controls;
 
+  // 导入模型由后端落盘目录提供：先注册档案，芯片才能列出它们
+  await loadImportedProfiles();
   renderModelChips(modelOptions, (name) => {
     void autoApply(controls, `已切换到「${name}」`);
+  });
+
+  // 设置窗口常驻隐藏：重新聚焦时刷新档案（主窗口可能刚拖入新模型）
+  window.addEventListener("focus", () => {
+    void refreshModelChips(controls);
   });
 
   // 载入当前设置（非 Tauri 环境回退默认值）；模型为空或未知时回显默认档案
@@ -169,10 +180,18 @@ function applySelection(c: Controls, settings: MascotSettings): void {
   setSwitch(c.alwaysOnTop, settings.alwaysOnTop);
   setSwitch(c.gazeFollow, settings.gazeFollow);
   setSwitch(c.autostart, settings.autostart);
-  selectedModelId = MODEL_PROFILES.some((p) => p.id === settings.modelId)
-    ? settings.modelId
-    : DEFAULT_SETTINGS.modelId;
+  selectedModelId = resolveModelId(settings.modelId);
   syncChips(c.modelOptions);
+}
+
+/** 校验模型 id：未知或空串回退默认档案（默认也没有时保持空串）。 */
+function resolveModelId(id: string): string {
+  if (allProfiles().some((p) => p.id === id)) {
+    return id;
+  }
+  return allProfiles().some((p) => p.id === DEFAULT_SETTINGS.modelId)
+    ? DEFAULT_SETTINGS.modelId
+    : "";
 }
 
 /** 按 MCP 开关状态置灰/恢复「端口/地址/状态」明细区。 */
@@ -180,13 +199,36 @@ function syncMcpDetail(c: Controls): void {
   c.mcpDetail.classList.toggle("disabled", !isSwitchOn(c.mcpEnabled));
 }
 
-/** 渲染模型芯片：来自档案注册表，点击即切换选中并立即保存（回调由挂载处注入）。 */
+/** 重新载入导入档案并重绘芯片（设置窗口常驻，主窗口拖入新模型后需刷新）。 */
+async function refreshModelChips(c: Controls): Promise<void> {
+  if (refreshing) {
+    return;
+  }
+  refreshing = true;
+  try {
+    await loadImportedProfiles();
+    // 主窗口可能刚导入并切换了模型：以磁盘上的最新设置为准同步选中态，
+    // 但不调用 applySelection，避免覆盖用户正在编辑的端口输入。
+    persisted = await loadSettings();
+    selectedModelId = resolveModelId(persisted.modelId);
+    renderModelChips(c.modelOptions, (name) => {
+      void autoApply(c, `已切换到「${name}」`);
+    });
+    syncChips(c.modelOptions);
+  } finally {
+    refreshing = false;
+  }
+}
+
+/** 渲染模型芯片：内置 + 运行时导入档案，点击即切换选中并立即保存（回调由挂载处注入）。 */
 function renderModelChips(root: HTMLElement, onSelect: (name: string) => void): void {
   root.replaceChildren();
-  for (const profile of MODEL_PROFILES) {
+  // 导入模型加 `.imported` 样式，和内置模型区分（悬停 title 里还有动作/表情数量）
+  const importedIds = new Set(importedModelProfiles().map((p) => p.id));
+  for (const profile of allProfiles()) {
     const chip = document.createElement("button");
     chip.type = "button";
-    chip.className = "chip";
+    chip.className = importedIds.has(profile.id) ? "chip imported" : "chip";
     chip.dataset.modelId = profile.id;
     chip.textContent = profile.name;
     if (profile.description) {

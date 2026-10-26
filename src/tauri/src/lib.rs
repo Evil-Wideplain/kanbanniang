@@ -8,6 +8,7 @@ mod config;
 mod debug;
 mod log_setup;
 mod mcp;
+mod model_store;
 mod state;
 mod tray;
 
@@ -26,12 +27,21 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        // 导入模型的自定义只读协议：`mascot-model://<id>/<相对路径>`
+        // （Windows/Android 上由 Tauri 映射为 `http://mascot-model.localhost/<id>/...`）。
+        // 运行时导入的模型不在安装包内，无法走 Vite 静态资源，故单独开一条只读通道。
+        .register_uri_scheme_protocol(model_store::ASSET_SCHEME, |ctx, request| {
+            model_store::respond(ctx.app_handle(), &request)
+        })
         // 设置相关命令：读写持久化设置、按需重启 MCP 服务与热切换模型；另含窗口平滑移动。
         .invoke_handler(tauri::generate_handler![
             commands::get_settings,
             commands::get_runtime_status,
             commands::save_settings,
             commands::move_window,
+            commands::list_imported_models,
+            commands::import_models,
+            commands::remember_model,
             debug::mcp_debug_call
         ])
         // 常驻托盘：关窗只隐藏不退出，真正结束进程走托盘菜单「退出」。

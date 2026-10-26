@@ -1,10 +1,10 @@
 ---
 title: src/frontend/ — 前端（TypeScript + Vite + Live2D）
 created: 2026-10-17
-updated: 2026-10-18
+updated: 2026-10-26
 type: concept
 tags: [typescript, vite, live2d, canvas, frontend]
-description: 前端执行细则：功能分片目录结构、DDD 分层、MCP 动作落地顺序、模型热切换、常见坑。
+description: 前端执行细则：功能分片目录结构、DDD 分层、MCP 动作落地顺序、模型热切换、拖拽导入模型、常见坑。
 sources: [.]
 ---
 
@@ -12,7 +12,7 @@ sources: [.]
 
 ## 职责
 
-看板娘的渲染与交互前端：Live2D（pixi）控制器实现、MCP 指令分发、模型热切换与 DOM 气泡。运行在 Tauri WebView 中，代码须容忍非 Tauri 环境。
+看板娘的渲染与交互前端：Live2D（pixi）控制器实现、MCP 指令分发、模型热切换、拖拽导入模型与 DOM 气泡。运行在 Tauri WebView 中，代码须容忍非 Tauri 环境。
 
 ## 关键文件
 
@@ -21,12 +21,12 @@ sources: [.]
 | 功能域 / 层 | 路径 | 职责 |
 |----|------|------|
 | 组合根 | `app/` | `main.ts`（主窗口）、`settings.ts`（设置窗口）、`debug.ts`（调试面板）三个 WebView 入口，只接线不写业务分支；`main.ts` 应用不透明度到画布 |
-| 共享·领域 Domain | `shared/domain/` | `types.ts` 契约、`profiles.ts` 模型档案、`settings.ts` 设置默认值与校验、`speech.ts` 说话时长、`normalize.ts` 名称归一化、`models.generated.json` 生成物 |
-| 共享·基础设施 Infra | `shared/ipc/` | `events.ts` Tauri 事件传输、`log-forward.ts` 日志转发（官方插件 JS 桥）、`settings-client.ts` 设置命令 invoke 与 `mascot:settings` 订阅、`cursor.ts` 全局光标源（视线跟随）、`window.ts` 窗口平滑移动 `move_window` 封装 |
+| 共享·领域 Domain | `shared/domain/` | `types.ts` 契约、`profiles.ts` 模型档案（内置 + 运行时导入注册表）、`imported.ts` 导入模型契约与档案换算、`settings.ts` 设置默认值与校验、`speech.ts` 说话时长、`normalize.ts` 名称归一化、`models.generated.json` 生成物 |
+| 共享·基础设施 Infra | `shared/ipc/` | `events.ts` Tauri 事件传输、`log-forward.ts` 日志转发（官方插件 JS 桥）、`settings-client.ts` 设置命令 invoke 与 `mascot:settings` 订阅、`model-import.ts` 导入模型命令 + 原生拖放订阅 + 资产根地址、`cursor.ts` 全局光标源（视线跟随）、`window.ts` 窗口平滑移动 `move_window` 封装 |
 | 共享·表现 UI | `shared/ui/` | `window-controls.ts` 无边框窗口自绘标题栏（关闭=隐藏 / 最小化）接线，设置窗口与调试面板共用 |
-| ① 看板娘 `mascot/` | `application/` | `dispatcher.ts` 指令用例分发、`model-switch.ts` 模型生命周期（热切换 + 回滚） |
+| ① 看板娘 `mascot/` | `application/` | `dispatcher.ts` 指令用例分发、`model-switch.ts` 模型生命周期（热切换 + 回滚）、`model-import.ts` 拖拽导入用例（导入 → 注册 → 热切换 → 记住选择） |
 | | `render/` | `MascotController` 的 Live2D 实现 `live2d/`（pixi） |
-| | `ui/` | `bubble.ts` DOM 气泡 |
+| | `ui/` | `bubble.ts` DOM 气泡、`drop-overlay.ts` 拖放提示浮层 |
 | ② 设置 `settings/` | `ui/` | `settings-page.ts` 设置页（纯 DOM） |
 | ③ 调试 `debug/` | `panel.ts` `args.ts` `ipc.ts` `log-view.ts` `types.ts` | MCP 调试面板：`panel.ts` 状态与渲染（由 `app/debug.ts` 调 `mountDebugPanel()` 挂载）、`args.ts` 参数纯函数、`ipc.ts` `mcp_debug_call` 传输、`log-view.ts` 调用日志视图、`types.ts` 面板类型 |
 | 样式 | `styles/` | `main.css` / `settings.css` / `debug.css`，各窗口入口 import |
@@ -41,6 +41,8 @@ sources: [.]
 - 新增 MCP 动作的固定顺序：`src/mcp/tools.json` → `shared/domain/types.ts` 的 `MASCOT_ACTIONS` → `mascot/application/dispatcher.ts` case → 控制器实现 `mascot/render/live2d/` → 冒烟验证。
 - `dispatcher.ts` 的 `switch` 有穷尽性检查（`const _exhaustive: never`）：新增动作漏写 case 会编译失败；禁止用 `default` 兜底绕过。
 - 模型切换遵循「先建后销、失败天然回滚」（先在游离画布建好新控制器才提交，见 `mascot/application/model-switch.ts`），禁止改成先销毁旧实例。
+- 模型档案注册表：内置档案来自构建期扫描（`MODEL_PROFILES`），运行时导入档案由 `registerImportedModels()` 原地替换（`importedProfiles` 引用稳定），消费方统一走 `allProfiles()` / `allModelIds()` / `getProfile()`。`settings` 域禁止 import `mascot/*`，故载入导入档案走共享基础设施 `shared/ipc/model-import.ts::loadImportedProfiles()`（主窗口启动时调用一次；设置窗口常驻，挂载与每次重新聚焦各刷新一次）。读取失败时该函数返回 `false` 并保留已注册档案，不得清空。
+- 拖拽导入：只能走 Tauri 原生拖放（`getCurrentWebview().onDragDropEvent`；`dragDropEnabled` 打开时 WebView 内 HTML5 DnD 不可用），且只有原生事件能拿到文件夹路径。解析、校验与落盘全部在 Rust（`model_store.rs`），前端只做「注册档案 → 热切换 → 记住选择」，禁止在前端解析模型配置。
 - 设置契约 `MascotSettings`（`shared/domain/types.ts`）与 Rust `config.rs::Settings` 成对镜像（camelCase）：启用 MCP / 端口 / 模型 / 置顶 / 视线跟随 / 不透明度 / 开机自启。MCP 启停与端口、窗口置顶、开机自启由后端作用于运行态（`get_runtime_status` 回读真实端口/运行态）；不透明度经事件 `mascot:settings` 由 `app/main.ts` 写到 CSS 变量 `--mascot-opacity`（`#stage` 引用），模型热切换重建画布后仍沿用；视线跟随同经 `mascot:settings` 由 `mascot/application/model-switch.ts` 应用到控制器（仅 Live2D 生效：`shared/ipc/cursor.ts` 读全局光标，`mascot/render/live2d/` 调 `focus` 扩展为**全屏**跟随；窗口内跟随由库 `autoInteract` 常驻、不受开关影响）。
 
 ## 开发注意事项
@@ -53,6 +55,8 @@ sources: [.]
 - 单元测试：`make unit`（= `npm run test`，vitest）覆盖领域层与纯函数（`shared/domain/*.test.ts`、`debug/args.test.ts`）以及应用层分发（`mascot/application/dispatcher.test.ts`，以替身注入 `MascotController` / `CommandCtx`）；DOM / Tauri / pixi 依赖的部分不在此测（以 `make test` 冒烟 + 人工确认为准）。`vitest.config.ts` 复用 `vite.config.ts` 的 root 与 `@` 别名（单一来源）。
 - `set_model` 的结果（含失败）必须包成 `SetModelOutcome` 信封塞进 `result` 字段用 `okValue` 返回：Rust 侧只转发 `result`，走 `fail()` 会丢失结构化错误。
 - Vite 的 `root` 是 `src/frontend/`，静态资源根是 `models/`（`/Haru/...` 即 `models/Haru/...`，见 `vite.config.ts`）；模型路径只能来自档案配置，禁止写死。开发端口 5173 与 `tauri.conf.json` 的 `devUrl` 绑定（`strictPort`），不要改动。
+- 导入模型资源经自定义协议提供（Windows 为 `http://mascot-model.localhost/<id>/<相对路径>`，其它平台 `mascot-model://localhost/...`）：档案 `config.modelDir` 必须由 `shared/domain/imported.ts::importedModelDir` 拼出，禁止写死 URL；非 Tauri 浏览器调试下列表为空、代码须照常启动。
+- 设置窗口常驻隐藏：`settings-page.ts` 在窗口重新获得焦点时重新加载导入档案并重绘芯片（`refreshModelChips`），否则主窗口之后拖入的模型不会出现在设置页。
 - 查询型动作必须在 5s 内回传结果；任何抛错都要转成 `MascotResult{ok:false}`（`shared/ipc/events.ts` 已兜底，不要绕过该路径）。
 - 禁止 `any`（`as any` 零容忍）；现存 `mascot/render/live2d/` 与 `mascot/application/model-switch.ts` 的 `window as any` 属第三方运行时/调试钩子例外，新增代码不得扩散该写法。
 - 资源生命周期：创建者负责 `destroy()`（幂等）；动画帧、事件监听、PIXI 实例必须在控制器 `destroy()` 中清理。
@@ -70,7 +74,7 @@ sources: [.]
 ## 依赖关系
 
 - 领域层（`shared/domain/`）仅依赖 TS 标准库与 `src/mcp/tools.json`；禁止 DOM / Tauri / pixi。
-- 与 Rust 后端仅通过 Tauri 事件契约耦合（`shared/domain/types.ts` ↔ `state.rs`）。
+- 与 Rust 后端仅通过 Tauri 事件契约耦合（`shared/domain/types.ts` ↔ `state.rs`）；导入模型另经命令契约耦合（`shared/domain/imported.ts` ↔ `model_store.rs`，命令 `list_imported_models` / `import_models` / `remember_model`，协议 scheme `mascot-model` 两侧成对维护）。
 - 外部依赖：pixi.js v6 + pixi-live2d-display（动态加载）。
 
 ## References

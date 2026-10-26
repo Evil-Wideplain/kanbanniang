@@ -10,7 +10,7 @@ import type {
   SetModelOutcome,
   WindowMoveOutcome,
 } from "@/shared/domain/types";
-import { DEFAULT_MODEL_ID, MODEL_PROFILES } from "@/shared/domain/profiles";
+import { allProfiles, DEFAULT_MODEL_ID } from "@/shared/domain/profiles";
 
 /**
  * 指令分发所需的切换上下文（由 main.ts 注入，dispatcher 保持与 DOM 解耦）。
@@ -119,7 +119,8 @@ export function handleCommand(
       }
       case "list_models": {
         const current = c?.status().modelId || ctx?.currentModelId() || null;
-        const models = MODEL_PROFILES.map((p2) => ({
+        // 内置档案 + 运行时导入档案：Agent 拖入模型后即可用同一套 list/set 调用操作
+        const models = allProfiles().map((p2) => ({
           id: p2.id,
           name: p2.name,
           description: p2.description ?? null,

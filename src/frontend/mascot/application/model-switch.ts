@@ -5,12 +5,7 @@
  */
 import type { MascotController, SetModelOutcome } from "@/shared/domain/types";
 import type { ModelProfile } from "@/shared/domain/profiles";
-import {
-  DEFAULT_MODEL_ID,
-  getProfile,
-  MODEL_IDS,
-  MODEL_PROFILES,
-} from "@/shared/domain/profiles";
+import { allModelIds, DEFAULT_MODEL_ID, getProfile } from "@/shared/domain/profiles";
 
 /** 模型生命周期：初始化、运行时热切换、当前控制器访问。 */
 export interface ModelManager {
@@ -75,11 +70,11 @@ export async function createModelManager(
       ok: false,
       error,
       current: currentModelId,
-      available: MODEL_PROFILES.map((p) => p.id),
+      available: allModelIds(),
     });
     if (!target) {
       console.warn("[mascot] 模型切换失败（未知模型）", { from, to: id });
-      return fail(`未知模型: ${id}（可用: ${MODEL_IDS.join(", ")}）`);
+      return fail(`未知模型: ${id}（可用: ${allModelIds().join(", ")}）`);
     }
     if (swapping) {
       console.warn("[mascot] 模型切换失败（已有切换进行中）", { from, to: id });
