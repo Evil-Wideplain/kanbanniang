@@ -1,45 +1,47 @@
 # 看板娘 KanbanMascot · Tauri + Live2D + 内置 MCP 服务
 
-一个**桌面看板娘**：用 [Tauri](https://tauri.app/) 做窗口外壳，用 [Live2D Cubism](https://www.live2d.com/) 做角色渲染，并在应用内**直接提供一个 MCP（Model Context Protocol）服务**。任何兼容 MCP 的 Agent（Claude Desktop、CodeBuddy、自定义脚本等）都能连上来，调用工具让看板娘**做动作、换表情、说话、移动、查询状态**。
+一个**桌面看板娘**：用 [Tauri](https://tauri.app/) 做窗口外壳，用 [Live2D Cubism](https://www.live2d.com/) 做角色渲染，并在应用内**直接提供一个 MCP（Model Context Protocol）服务**（同时支持旧版 SSE 与 Streamable HTTP）。任何兼容 MCP 的 Agent（**DSH**、Claude Desktop、自定义脚本等）都能连上来，调用工具让看板娘**做动作、换表情、说话、移动、查询状态**。
 
 > 核心价值：**看板娘即工具（tool）**。Agent 不需要理解 Live2D，只要调用 `play_motion` / `speak` / `set_expression` 等 MCP 工具，桌面上的看板娘就会动起来。
+>
+> 本仓库同时是一个 **DSH 插件包**：安装后 DSH 启动时会自动拉起看板娘，并把 11 个工具注册给模型（`mcp__kanban_mascot__*`）。
 
 ---
 
 ## 架构
 
 ```
-┌──────────────────────────────┐         SSE / JSON-RPC
-│  Agent (Claude Desktop 等)   │ ───────────────────────────┐
-└──────────────────────────────┘                            │
-                                                             ▼
-                          ┌────────────────────────────────────────────┐
-                          │  Tauri 进程 (Rust)                          │
-                          │  ┌──────────────────────────────────────┐  │
-                          │  │  axum MCP SSE 服务  :7432/mcp/sse     │  │
-                          │  │   tools/list · tools/call · initialize│  │
-                          │  └───────────────┬──────────────────────┘  │
-                          │        emit "mascot:action" (Tauri 事件)   │
-                          └───────────────────┬────────────────────────┘
-                                              │  Tauri 事件
-                                              ▼
-                          ┌────────────────────────────────────────────┐
-                          │  WebView 前端 (TypeScript)                  │
-                          │  Live2D 控制器 → 看板娘                      │
-                          │  dispatcher.ts: 事件 → 控制器方法          │
-                          │  emit "mascot:result" (查询型动作回传)        │
-                          └────────────────────────────────────────────┘
+┌──────────────────────────────┐   ┌────────────────────────────────┐
+│  DSH（插件系统 + MCP 客户端） │   │  Claude Desktop / Inspector 等  │
+│  mcp__kanban_mascot__* 工具   │   │  任意 MCP 客户端                 │
+└──────────────┬───────────────┘   └───────────────┬────────────────┘
+               │ Streamable HTTP                    │ SSE / Streamable HTTP
+               ▼                                    ▼
+        ┌──────────────────────────────────────────────────────────┐
+        │  看板娘 Tauri 进程（Rust，127.0.0.1:7432）                │
+        │  axum：POST /mcp · GET /mcp/sse · /health                 │
+        │  MCP 服务 → JSON-RPC 路由 → 工具清单（src/mcp/tools.json） │
+        └───────────────────────────┬──────────────────────────────┘
+                                    │ Tauri 事件 mascot:action
+                                    ▼
+        ┌──────────────────────────────────────────────────────────┐
+        │  WebView 前端（TypeScript）                               │
+        │  dispatcher → Live2D 控制器 → 动作 / 表情 / 气泡           │
+        │  查询型动作经 mascot:result 回传（一次性通道，5s 超时）     │
+        └──────────────────────────────────────────────────────────┘
 ```
 
-- **传输方式**：MCP 走 **本地 SSE**（`http://127.0.0.1:7432/mcp/sse`），桌面 GUI 程序无法用 stdio 暴露 MCP，SSE 是最自然的本地接入方式。
-- **动作链路**：Agent 调用工具 → Rust 端 axum 收到 `tools/call` → 通过 Tauri 事件 `mascot:action` 通知前端 → 前端驱动 Live2D 看板娘执行。
+- **两种传输**：同一端口同时提供 MCP **Streamable HTTP**（`POST http://127.0.0.1:7432/mcp`，DSH 使用）与旧版 **SSE**（`http://127.0.0.1:7432/mcp/sse`，Claude Desktop 等使用）；`/health` 供插件探活。
+- **动作链路**：Agent 调用工具 → axum 收到 `tools/call` → 通过 Tauri 事件 `mascot:action` 通知前端 → 前端驱动 Live2D 看板娘执行。
 - **查询链路**：`list_motions` / `list_expressions` / `get_status` / `set_model` / `list_models` 这类查询型工具，前端执行后通过 `mascot:result` 事件把结果回传，Rust 端用 oneshot 通道等结果（超时 5s）。
+- **DSH 插件链路**：DSH 启动 → 宿主插件探活/拉起看板娘 → 官方 MCP 客户端连接 `/mcp` → 工具注入当前会话。
 
 ---
 
 ## 特性
 
-- ✅ 内置 MCP 服务（SSE），Agent 可即连即用
+- ✅ 内置 MCP 服务：**Streamable HTTP + SSE 双传输**，Agent 即连即用
+- ✅ **可作为 DSH 插件安装**：DSH 启动自动拉起看板娘，工具以 `mcp__kanban_mascot__*` 注入会话
 - ✅ 11 个工具：动作 / 表情 / 说话 / **窗口移动**（平滑滑行）/ 窗口内站位 / 待机 / 列动作 / 列表情 / 查状态 / **运行时换模型** / 列模型
 - ✅ Live2D Cubism 3–5.3 模型即插即用：放入 `models/` 后自动发现并登记
 - ✅ 透明无边框、置顶窗口，典型的桌面看板娘形态
@@ -72,12 +74,69 @@ npm install
 npm run tauri:dev
 
 # 4. 另开一个终端，验证 MCP 工具链路（需应用已启动）
-node cmd/client/test.mjs
+node cmd/client/test.mjs            # 旧版 SSE 传输
+node cmd/client/test-streamable.mjs # Streamable HTTP 传输（DSH 同款协议）
 ```
 
-启动后可看到桌面角落出现一个透明置顶的看板娘；`test.mjs` 会依次调用
+启动后可看到桌面角落出现一个透明置顶的看板娘；两个冒烟脚本会依次调用
 `initialize → tools/list → speak → get_status → list_motions → play_motion → set_expression`，
 你应该能看到看板娘做出对应反应，且脚本打印出返回结果。
+
+---
+
+## 作为 DSH 插件安装（推荐）
+
+> 前置：DSH 桌面端 0.2.x 已启动过一次（完成 profile 初始化），且本仓库已构建出 exe。
+
+```bash
+npm install
+make build              # Release 构建：生成 target/release/kanban-mascot.exe
+npm run plugin:install  # 安装到 DSH desktop profile（自动先编译插件宿主半侧）
+```
+
+安装脚本调用**桌面端自带的 dsh CLI**（`resources/runtime/cli/bin/dsh.cmd`）执行
+`plugin --profile desktop add link:<本仓库绝对路径>`——PATH 上的 npm `dsh` 会拒绝操作 desktop profile。
+插件管理器会完成：profile 依赖写为 `link:` 符号链接、`dsh.profile.bundles` 追加 `kanban-mascot`、
+用自带 pnpm 安装、以及版本闸门校验（本包声明 `engines.dsh: ^0.2.0-rc.1`）。
+
+**它做了什么**
+
+- 根目录 `package.json` 的 `dsh.bundle.patch` 指向 `cordis.patch.yml`，安装后自动成为一层 bundle；
+- `cordis.patch.yml` 按顺序插入两条插件：
+  1. `kanban-mascot` 宿主插件（`src/plugin/` → `lib/host.js`）：读取看板娘 `settings.json`
+     的 `mcpPort` 解析 MCP 端点（默认 7432），发布 `mascotStartup` 服务；探测 `/health`，
+     未运行则拉起 `target/release/kanban-mascot.exe`（缺省回退 `target/debug/`）并等待就绪；
+  2. `@deepseek-ai/dsh-mcp-client`：`inject: [mascotStartup]`，以 `streamable-http` 连接
+     同一端点，把 11 个工具注册为 `mcp__kanban_mascot__<tool>`。
+
+> 端口只有一处来源：看板娘设置页（写入 `settings.json`）。插件每次启动都会重新读取，
+> 因此改端口后只需重启 DSH，不必修改插件配置。
+
+**重启 DSH 后验证**
+
+- 新建会话，对模型说「让看板娘挥挥手，并说欢迎回来」；
+- 可用工具里应出现 `mcp__kanban_mascot__get_status`、`..._speak`、`..._play_motion` 等；
+- 宿主插件日志：`~/.dsh/kanban-mascot/plugin.log`（DSH 桌面端本身不落盘 host 插件日志，故双写一份）。
+
+**图形界面安装（等价）**：DSH 侧栏「插件」→「安装第三方插件」→ 填本仓库绝对路径 `C:\Code\pet` → 安装并启用。
+
+**配置**
+
+| 位置 | 字段 | 说明 |
+|------|------|------|
+| 看板娘设置页 | MCP 开关 / 端口 | **端口的唯一来源**：写入 `settings.json` 的 `mcpEnabled` / `mcpPort`，插件自动读取 |
+| `cordis.patch.yml`（宿主行） | `autoLaunch` | 是否由插件拉起应用；默认 `true` |
+| `cordis.patch.yml`（宿主行） | `mcpUrl` | 可选：强制固定端点（覆盖设置文件），一般不需要 |
+| `cordis.patch.yml`（宿主行） | `launchCommand` / `repoRoot` | 自定义启动命令或仓库位置（一般不需要） |
+| `cordis.patch.yml`（MCP 行） | `reconnect.maxAttempts` | 连续重连上限；耗尽后工具注销，需重载配置 |
+
+**卸载**
+
+```bash
+npm run plugin:uninstall   # dsh plugin --profile desktop remove kanban-mascot
+```
+
+安装/卸载后需**完全退出并重启 DSH** 生效；看板娘应用与仓库文件不受影响，仍可单独运行。
 
 ---
 
@@ -153,21 +212,31 @@ pet/
 │  │  ├─ settings/ui/      设置页 settings-page.ts
 │  │  ├─ debug/            MCP 调试面板：panel / args / ipc / log-view / types
 │  │  └─ styles/           main.css / settings.css / debug.css
+│  ├─ plugin/              DSH 宿主插件半侧（TS）：host 编排 / config / appSettings / runtime / logging
 │  ├─ mcp/
 │  │  └─ tools.json        MCP 工具清单（Rust/TS 单一来源）
-│  └─ tauri/               Rust 后端（原 src-tauri，cargo 包根）
+│  └─ tauri/               Rust 后端（cargo 包根）
 │     ├─ Cargo.toml
 │     ├─ src/lib.rs        Tauri 入口 + 启动 MCP 服务
-│     ├─ src/mcp/mod.rs    axum SSE MCP 服务（传输 + JSON-RPC 协议）
+│     ├─ src/mcp/mod.rs    MCP 模块根（双传输常量与文档）
+│     ├─ src/mcp/server.rs 服务生命周期 + 路由装配（/mcp · /mcp/sse · /health）
+│     ├─ src/mcp/streamable.rs Streamable HTTP 传输（DSH 使用）
+│     ├─ src/mcp/sse.rs    旧版 SSE 传输与会话
+│     ├─ src/mcp/rpc.rs    JSON-RPC 方法路由与封套
 │     ├─ src/mcp/tools.rs  工具清单加载 + tools/call 分发（读 src/mcp/tools.json）
 │     ├─ src/state.rs      共享状态 + 事件发射 + 结果回传（查询型 5s oneshot）
 │     ├─ tauri.conf.json   窗口配置（透明/置顶/无边框）
 │     └─ capabilities/     权限
+├─ cordis.patch.yml        DSH bundle patch：插入宿主插件 + MCP 客户端两行
+├─ assets/icon.png         插件管理页图标（≤256 KiB）
+├─ scripts/
+│  └─ install-dsh-plugin.mjs  安装/卸载到 DSH profile（调用桌面端自带 dsh CLI）
 ├─ models/                 静态资源根（Vite publicDir）：模型目录 + 接入文档
 ├─ cmd/
 │  └─ client/
 │     ├─ client.mjs        共享 SSE/RPC 客户端（pending + 消息队列）
-│     ├─ test.mjs          冒烟测试：完整调用一遍工具
+│     ├─ test.mjs          SSE 冒烟测试：完整调用一遍工具
+│     ├─ test-streamable.mjs Streamable HTTP 冒烟测试（零依赖）
 │     └─ preview.mjs       动作/表情逐个预览并命名（生成语义别名用）
 └─ README.md
 ```
@@ -179,4 +248,7 @@ pet/
 - Live2D 的「真实口型同步」需接入 AudioEngine + Phoneme，当前 `speak` 仅做气泡与表情反馈。
 - 查询型工具依赖前端在线（窗口开着）；若窗口关闭，查询会 5s 超时。
 - MCP 目前仅本地 `127.0.0.1` 暴露，未做鉴权（桌面本地应用足够；若需远程接入请自行加 token/隧道）。
+- DSH 宿主插件按仓库路径（`link:`）安装，**要求本机已 `make build`**；安装包分发（npm / 市场）尚未配置。
+- 插件日志写到 `<DSH_HOME>/kanban-mascot/plugin.log`：桌面端 DSH 不落盘宿主插件 stdout，排查请优先看该文件。
+- Windows 为主要验证平台；macOS / Linux 的自动拉起路径（可执行文件名）未做适配。
 - 可扩展方向：点击交互、动作队列、把「前端状态」做成可订阅的资源（MCP resources）。（拖拽窗口、多模型切换已完成）

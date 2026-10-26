@@ -1,18 +1,18 @@
 ---
-title: src/tauri/ — Rust 后端（Tauri 2 + axum MCP SSE 服务）
+title: src/tauri/ — Rust 后端（Tauri 2 + axum MCP 双传输服务）
 created: 2026-10-17
-updated: 2026-10-18
+updated: 2026-10-26
 type: concept
-tags: [rust, tauri, axum, mcp, sse]
-description: Rust 后端执行细则：模块职责与边界、错误处理、质量门禁（clippy/fmt/cargo-crap）。
+tags: [rust, tauri, axum, mcp, sse, streamable-http]
+description: Rust 后端执行细则：模块职责与边界、MCP 双传输（Streamable HTTP + SSE）与 /health、错误处理、质量门禁（clippy/fmt/cargo-crap）。
 sources: [.]
 ---
 
-# src/tauri/ — Rust 后端（Tauri 2 + axum MCP SSE 服务）
+# src/tauri/ — Rust 后端（Tauri 2 + axum MCP 双传输服务）
 
 ## 职责
 
-桌面应用后端与 MCP（SSE）服务：接收 Agent 的 JSON-RPC 工具调用，经 Tauri 事件转发给前端看板娘，并等待查询型工具的结果回传（5s 超时）。包根即本目录，所有 cargo 命令在此执行（workdir: `src/tauri`）。
+桌面应用后端与 MCP 服务（**Streamable HTTP + 旧版 SSE**）：接收 Agent 的 JSON-RPC 工具调用，经 Tauri 事件转发给前端看板娘，并等待查询型工具的结果回传（5s 超时）。额外提供 `/health` 供 DSH 插件探活。包根即本目录，所有 cargo 命令在此执行（workdir: `src/tauri`）。
 
 ## 关键文件
 
@@ -20,13 +20,14 @@ sources: [.]
 |------|------|------|
 | `src/lib.rs` | 组合根：装配共享状态、注册结果监听器、读取设置、拉起 MCP 服务、注册设置命令、注册 autostart 插件、应用运行态偏好（`commands::apply_startup`） | 只做接线；启动失败记录日志并以非零码退出 |
 | `src/mcp/mod.rs` | 模块根：子模块声明与 re-export、共享常量（`DEFAULT_MCP_PORT` / `QUERY_TIMEOUT_SECS`）、`AppState` 别名 | 只做收口；协议文档头在此 |
-| `src/mcp/server.rs` | 服务生命周期：启动 / 停止 / 按端口热重启（`ServerHandle` / `ServiceManager`，先建后销） | 只做启停编排与路由装配；不写工具语义 |
-| `src/mcp/sse.rs` | 传输层：SSE 握手 / 会话治理（`sse_handler`）+ POST 入口（`post_handler` / `parse_request` / `SessionGuard`） | 只做传输与会话清理；协议分发交 `rpc` |
+| `src/mcp/server.rs` | 服务生命周期：启动 / 停止 / 按端口热重启（`ServerHandle` / `ServiceManager`，先建后销）+ 路由装配（`/mcp` · `/mcp/sse` · `/mcp/messages` · `/health`） | 只做启停编排与路由装配；不写工具语义 |
+| `src/mcp/streamable.rs` | Streamable HTTP 传输（无状态）：`POST /mcp` 同步回 JSON/202、initialize 下发 `Mcp-Session-Id`、`GET /mcp` → 405、`DELETE` 幂等、`OPTIONS` CORS；`/health` 探活 | 只做传输适配；协议分发交 `rpc` |
+| `src/mcp/sse.rs` | 旧版 SSE 传输：握手 / 会话治理（`sse_handler`）+ POST 入口（`post_handler` / `parse_request` / `SessionGuard`） | 只做传输与会话清理；协议分发交 `rpc` |
 | `src/mcp/rpc.rs` | JSON-RPC 协议：方法路由（initialize / ping / tools/list / tools/call）与响应封套成型（错误码/字段） | 不写工具语义与传输细节 |
 | `src/mcp/tools.rs` | 工具清单加载（`src/mcp/tools.json` 编译期嵌入）与 `tools/call` 路由（核心 `route`；调试面板复用 `call_tool` 完整协议封套） | 只投影协议字段；`action`/`query` 内部字段不得混入 `tools/list` 响应 |
-| `src/mcp/debug.rs` | 应用内调试面板的 MCP 入口：`debug_call` 自造 JSON-RPC id 复用 `tools::call_tool` 完整协议封套，返回整帧响应 | 只做调试接线；复用真链路但绕过 SSE 传输 |
+| `src/mcp/debug.rs` | 应用内调试面板的 MCP 入口：`debug_call` 自造 JSON-RPC id 复用 `tools::call_tool` 完整协议封套，返回整帧响应 | 只做调试接线；复用真链路但绕过传输层 |
 | `src/state.rs` | 共享状态与事件端口：`mascot:action` 发射、`mascot:result` 等待（5s oneshot） | 跨线程表结构一律经访问器读写；类型与前端 `types.ts` 成对镜像 |
-| `src/config.rs` | 设置持久化：`settings.json` 读写（缺失/损坏回退默认值）+ 端口/不透明度校验 + 内存副本 `SettingsStore` | 只做持久化；字段与前端 `shared/domain/types.ts` 的 `MascotSettings` 成对镜像 |
+| `src/config.rs` | 设置持久化：`settings.json` 读写（缺失/损坏回退默认值）+ 端口/不透明度校验 + 内存副本 `SettingsStore` | 只做持久化；字段与前端 `shared/domain/types.ts` 的 `MascotSettings` 成对镜像；DSH 插件从该文件读取 `mcpPort` |
 | `src/commands.rs` | 设置命令（接口层）：`get_settings` / `get_runtime_status`（MCP 实际端口/运行态）/ `save_settings`（MCP 开关与端口变更启停服务、模型变更热切换、窗口置顶/开机自启作用于运行态、不透明度与视线跟随广播 `mascot:settings`）；`apply_startup` 启动时应用运行态偏好；`move_window` 主窗口平滑滑到工作区归一化坐标（600ms smoothstep，`WindowGlideGuard` 代次守卫防并发抢占，供 MCP `move` 工具经前端分发调入） | 只做用例编排；持久化交 `config.rs`、启停交 `mcp::ServiceManager`、窗口交 Tauri 窗口 API、自启交 autostart 插件 |
 | `src/debug.rs` | 应用内 MCP 调试面板：命令 `mcp_debug_call`（始终注册）复用 `mcp::debug_call` 工具路由；`create_window` 仅在 `debug_assertions` 下创建 `debug.html` 窗口 | 只做调试接线；窗口创建仅开发构建，release 无该窗口故命令不可触达 |
 | `src/log_setup.rs` | 日志装配：`tauri-plugin-log` 配置（级别/滚动/targets/落盘位置/行格式）与注册入口 `plugin()`；`file_dir()` 暴露实际落盘目录给启动日志 | 只做装配；落盘位置优先 exe 同目录、不可写回退 LogDir；禁止绕过 `log` 门面写日志 |
@@ -38,9 +39,17 @@ sources: [.]
 
 ## 核心流程
 
-### MCP 请求链路
+### MCP 请求链路（双传输共用同一套协议与工具）
 
-`initialize` / `tools/list` / `tools/call` 由 `mcp/rpc.rs` 解析协议 → `tools.rs` 路由工具 → `state.rs::dispatch` 发射 `mascot:action` 到前端；非查询型工具立即返回 `Accepted`，查询型等待 `mascot:result`（follow 5s 超时；超时必须清理 `pending` 表防泄漏）。
+```
+POST /mcp（Streamable HTTP，DSH 使用）──┐
+GET /mcp/sse + POST /mcp/messages ─────┴─▶ rpc.rs（JSON-RPC 分发）
+                                             ├─ initialize / ping / tools/list 就地应答
+                                             └─ tools/call → tools.rs 路由 → state.rs::dispatch
+GET /health ──▶ {"ok":true,"service":"kanban-mascot",...}（插件探活）
+```
+
+`initialize` 回 `protocolVersion: "2024-11-05"`、`capabilities.tools.listChanged: true`、`serverInfo`（name + `env!("CARGO_PKG_VERSION")`）。Streamable HTTP 为无状态实现：会话头只在 initialize 下发、不校验归属；`GET /mcp` 按协议回 405（客户端视为不支持服务端推送）。
 
 ### 常驻托盘与窗口行为
 
