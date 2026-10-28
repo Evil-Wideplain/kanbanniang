@@ -14,9 +14,8 @@ import { callToolFrame, queryResult } from "./ipc";
 import { createLogView } from "./log-view";
 import type { Field, InputProperty, ToolDef } from "./types";
 
-/** 需要候选值（datalist）的参数名 → 提供候选的工具名。 */
+/** 需要候选值（datalist）的参数名 → 提供候选的工具名（动作名嵌在 steps 里，不走 datalist）。 */
 const CANDIDATE_SOURCES: Record<string, string> = {
-  motion: "list_motions",
   expression: "list_expressions",
   model: "list_models",
 };
@@ -77,10 +76,12 @@ function selectTool(index: number): void {
 /** 构建一个参数控件并登记到 `out`（预填默认值；候选型参数挂 datalist）。 */
 function buildField(key: string, prop: InputProperty, out: Field[]): HTMLElement {
   const numeric = isNumeric(prop);
+  // 数组型参数（如 play_motion 的 steps）用多行 JSON 文本编辑，收集时再解析成数组
+  const json = prop.type === "array";
   let el: HTMLInputElement | HTMLTextAreaElement;
-  if (key === "text") {
+  if (key === "text" || json) {
     const area = document.createElement("textarea");
-    area.rows = 2;
+    area.rows = key === "text" ? 2 : 6;
     el = area;
   } else {
     const input = document.createElement("input");
@@ -94,10 +95,10 @@ function buildField(key: string, prop: InputProperty, out: Field[]): HTMLElement
   el.title = prop.description ?? "";
   el.setAttribute("placeholder", prop.description ?? key);
   el.value = prefillFor(candidates, key);
-  if (!numeric && key in CANDIDATE_SOURCES) {
+  if (!numeric && !json && key in CANDIDATE_SOURCES) {
     el.setAttribute("list", `cand-${key}`);
   }
-  out.push({ key, el, numeric });
+  out.push({ key, el, numeric, json });
   return el;
 }
 
@@ -217,15 +218,13 @@ function assignCandidates(key: string, values: string[]): void {
   }
 }
 
-/** 开场拉取动作 / 表情 / 模型候选值（失败仅告警，不影响手动输入）。 */
+/** 开场拉取表情 / 模型候选值（失败仅告警，不影响手动输入）。 */
 async function loadCandidates(): Promise<void> {
   try {
-    const [motions, expressions, models] = await Promise.all([
-      queryResult("list_motions"),
+    const [expressions, models] = await Promise.all([
       queryResult("list_expressions"),
       queryResult("list_models"),
     ]);
-    assignCandidates("motion", asStringArray(motions));
     assignCandidates("expression", asStringArray(expressions));
     assignCandidates("model", asModelIds(models));
   } catch (e) {

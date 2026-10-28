@@ -36,4 +36,6 @@ export interface Field {
   key: string;
   el: HTMLInputElement | HTMLTextAreaElement;
   numeric: boolean;
+  /** 数组型参数：控件里是 JSON 文本，收集时解析成数组（容错留在调试层，不进 MCP 契约）。 */
+  json?: boolean;
 }

@@ -17,12 +17,15 @@ export function prefillFor(candidates: Record<string, string[]>, key: string): s
       return "0.9";
     case "text":
       return "来自 MCP 调试面板的问候";
+    case "steps":
+      // play_motion 的 steps 是数组：面板里用 JSON 文本编辑，collect 时解析成数组
+      return '[{"motion":"idle"}]';
     default:
       return candidates[key]?.[0] ?? "";
   }
 }
 
-/** 从参数控件收集调用载荷：空值跳过；数值型转 number，其余转字符串。 */
+/** 从参数控件收集调用载荷：空值跳过；数值型转 number，数组型按 JSON 解析，其余转字符串。 */
 export function collect(fields: Field[]): Record<string, unknown> {
   const args: Record<string, unknown> = {};
   for (const field of fields) {
@@ -30,9 +33,22 @@ export function collect(fields: Field[]): Record<string, unknown> {
     if (raw === "") {
       continue;
     }
-    args[field.key] = field.numeric ? Number(raw) : raw;
+    if (field.json) {
+      args[field.key] = parseJsonField(field.key, raw);
+    } else {
+      args[field.key] = field.numeric ? Number(raw) : raw;
+    }
   }
   return args;
+}
+
+/** 解析数组型参数的 JSON 文本：非法 JSON 直接抛错，由调用方在日志视图里提示（不静默吞掉）。 */
+function parseJsonField(key: string, raw: string): unknown {
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    throw new Error(`参数 ${key} 不是合法 JSON：${raw}`);
+  }
 }
 
 /** 按默认预填组装参数（「依次调用全部」用，不依赖当前选中的参数卡）。 */
@@ -46,7 +62,16 @@ export function defaultArgs(
     if (value === "") {
       continue;
     }
-    args[key] = isNumeric(prop) ? Number(value) : value;
+    if (prop.type === "array") {
+      // 数组型：预填值是 JSON 文本，解析失败退回原文本（由分发层报出可读错误）
+      try {
+        args[key] = parseJsonField(key, value);
+      } catch {
+        args[key] = value;
+      }
+    } else {
+      args[key] = isNumeric(prop) ? Number(value) : value;
+    }
   }
   return args;
 }

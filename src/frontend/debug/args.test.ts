@@ -6,8 +6,8 @@ import { asModelIds, asStringArray, collect, defaultArgs, isNumeric, prefillFor 
 import type { Field, ToolDef } from "./types";
 
 /** 构造一个假的参数控件（仅需 value 供 collect 读取）。 */
-function fakeField(key: string, value: string, numeric: boolean): Field {
-  return { key, el: { value } as HTMLInputElement, numeric };
+function fakeField(key: string, value: string, numeric: boolean, json = false): Field {
+  return { key, el: { value } as HTMLInputElement, numeric, json };
 }
 
 /** 构造一个最小工具定义。 */
@@ -35,6 +35,10 @@ describe("prefillFor", () => {
     expect(prefillFor({ motion: ["Wave", "Idle"] }, "motion")).toBe("Wave");
     expect(prefillFor({}, "motion")).toBe("");
   });
+
+  it("steps 预填为合法 JSON 数组（语义名 idle，交给动作目录解析）", () => {
+    expect(JSON.parse(prefillFor({}, "steps"))).toEqual([{ motion: "idle" }]);
+  });
 });
 
 describe("collect", () => {
@@ -42,6 +46,13 @@ describe("collect", () => {
     expect(
       collect([fakeField("x", "0.5", true), fakeField("motion", "", false), fakeField("text", "hi", false)]),
     ).toEqual({ x: 0.5, text: "hi" });
+  });
+
+  it("数组型参数按 JSON 解析，非法 JSON 抛错（容错留在调试层）", () => {
+    expect(collect([fakeField("steps", '[{"motion":"idle"}]', false, true)])).toEqual({
+      steps: [{ motion: "idle" }],
+    });
+    expect(() => collect([fakeField("steps", "[{motion:", false, true)])).toThrow("不是合法 JSON");
   });
 });
 
@@ -52,6 +63,12 @@ describe("defaultArgs", () => {
       tool({ x: { type: "number" }, motion: { type: "string" }, expression: { type: "string" } }),
     );
     expect(args).toEqual({ x: 0.5, motion: "Wave" });
+  });
+
+  it("数组型参数解析成数组（不是 JSON 字符串）", () => {
+    const args = defaultArgs({}, tool({ steps: { type: "array" } }));
+    expect(Array.isArray(args.steps)).toBe(true);
+    expect(args.steps).toEqual([{ motion: "idle" }]);
   });
 });
 
