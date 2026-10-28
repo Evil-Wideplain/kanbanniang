@@ -25,7 +25,7 @@ sources: [.]
 | 共享·基础设施 Infra | `shared/ipc/` | `events.ts` Tauri 事件传输、`log-forward.ts` 日志转发（官方插件 JS 桥）、`settings-client.ts` 设置命令 invoke 与 `mascot:settings` 订阅、`model-import.ts` 导入模型命令 + 原生拖放订阅 + 资产根地址、`cursor.ts` 全局光标源（视线跟随）、`window.ts` 窗口平滑移动 `move_window` 封装 |
 | 共享·表现 UI | `shared/ui/` | `window-controls.ts` 无边框窗口自绘标题栏（关闭=隐藏 / 最小化）接线，设置窗口与调试面板共用 |
 | ① 看板娘 `mascot/` | `application/` | `dispatcher.ts` 指令用例分发、`model-switch.ts` 模型生命周期（热切换 + 回滚）、`model-import.ts` 拖拽导入用例（导入 → 注册 → 热切换 → 记住选择） |
-| | `render/` | `MascotController` 的 Live2D 实现 `live2d/`（pixi） |
+| | `render/` | `MascotController` 的 Live2D 实现 `live2d/`（pixi）：`index.ts` 控制器生命周期/布局/表情通道/队列端口接线、`motion-catalog.ts` 动作名解析与步骤计划（纯逻辑）、`motion-queue.ts` 串行播放状态机（token 打断、计时器清理，端口与计时器可注入）、`core-loader.ts` Cubism Core 装载与兼容层 |
 | | `ui/` | `bubble.ts` DOM 气泡、`drop-overlay.ts` 拖放提示浮层 |
 | ② 设置 `settings/` | `ui/` | `settings-page.ts` 设置页（纯 DOM） |
 | ③ 调试 `debug/` | `panel.ts` `args.ts` `ipc.ts` `log-view.ts` `types.ts` | MCP 调试面板：`panel.ts` 状态与渲染（由 `app/debug.ts` 调 `mountDebugPanel()` 挂载）、`args.ts` 参数纯函数、`ipc.ts` `mcp_debug_call` 传输、`log-view.ts` 调用日志视图、`types.ts` 面板类型 |
@@ -40,6 +40,7 @@ sources: [.]
 - DOM 访问白名单：`mascot/ui/`、`settings/ui/`、`shared/ui/`、`debug/`、`app/*`、`mascot/render/`（`live2d/`），以及 `mascot/application/model-switch.ts` 的画布切换逻辑；`shared/domain/`、`shared/ipc/` 与 `mascot/application/dispatcher.ts` 内禁止直接操作 `document.*` / `window.*`。
 - 新增 MCP 动作的固定顺序：`src/mcp/tools.json` → `shared/domain/types.ts` 的 `MASCOT_ACTIONS` → `mascot/application/dispatcher.ts` case → 控制器实现 `mascot/render/live2d/` → 冒烟验证。
 - `dispatcher.ts` 的 `switch` 有穷尽性检查（`const _exhaustive: never`）：新增动作漏写 case 会编译失败；禁止用 `default` 兜底绕过。
+- 气泡唯一出口是控制器的 `speechSink`（`app/main.ts` 注入 `bubble.show`）：`CommandCtx` 不再提供 `showBubble`，新增表现层回调不要另开出口，否则同一条台词会弹两次或漏弹。`play_motion` 的数值上限集中在 `shared/domain/motion-limits.ts`（唯一来源，与 `src/mcp/tools.json` 由 `motion-limits.test.ts` 互校），消费方禁止再写字面量。
 - 模型切换遵循「先建后销、失败天然回滚」（先在游离画布建好新控制器才提交，见 `mascot/application/model-switch.ts`），禁止改成先销毁旧实例。
 - 模型档案注册表：内置档案来自构建期扫描（`MODEL_PROFILES`），运行时导入档案由 `registerImportedModels()` 原地替换（`importedProfiles` 引用稳定），消费方统一走 `allProfiles()` / `allModelIds()` / `getProfile()`。`settings` 域禁止 import `mascot/*`，故载入导入档案走共享基础设施 `shared/ipc/model-import.ts::loadImportedProfiles()`（主窗口启动时调用一次；设置窗口常驻，挂载与每次重新聚焦各刷新一次）。读取失败时该函数返回 `false` 并保留已注册档案，不得清空。
 - 拖拽导入：只能走 Tauri 原生拖放（`getCurrentWebview().onDragDropEvent`；`dragDropEnabled` 打开时 WebView 内 HTML5 DnD 不可用），且只有原生事件能拿到文件夹路径。解析、校验与落盘全部在 Rust（`model_store.rs`），前端只做「注册档案 → 热切换 → 记住选择」，禁止在前端解析模型配置。
@@ -48,11 +49,11 @@ sources: [.]
 ## 开发注意事项
 
 - 技术栈：TypeScript（`strict` 全开）+ Vite，无 UI 框架；不引入新框架/状态库（除非用户明确要求）。渲染：pixi.js v6 + pixi-live2d-display（动态 import）。
-- Cubism Core 6 移除了 `drawables.renderOrders`（改为 `model.getRenderOrders()`），而 `pixi-live2d-display@0.4.0` 仍读旧字段：`mascot/render/live2d/index.ts::patchCubismCoreCompat` 在 Core 加载后补只读兼容 getter；升级/替换渲染库时需一并复核，否则模型会“加载成功但不显示”。
+- Cubism Core 6 移除了 `drawables.renderOrders`（改为 `model.getRenderOrders()`），而 `pixi-live2d-display@0.4.0` 仍读旧字段：`mascot/render/live2d/core-loader.ts::patchCubismCoreCompat` 在 Core 加载后补只读兼容 getter；升级/替换渲染库时需一并复核，否则模型会“加载成功但不显示”。
 - 运行环境是 Tauri WebView；浏览器直开 `npm run dev` 仅用于界面调试（MCP 不可用），代码必须容忍非 Tauri 环境（见 `shared/ipc/events.ts` 的降级分支）。
-- 调试面板（`debug/panel.ts`，入口 `app/debug.ts`）不直接连 MCP SSE（WebView origin `tauri://localhost` 与 `http://127.0.0.1:<port>` 跨源、axum 无 CORS）：经 Tauri 命令 `mcp_debug_call`（Rust `debug.rs` → `mcp::debug_call`）复用工具真链路；候选值在页面加载时经 `list_motions` / `list_expressions` / `list_models` 一次拉回并填充 datalist。
+- 调试面板（`debug/panel.ts`，入口 `app/debug.ts`）不直接连 MCP SSE（WebView origin `tauri://localhost` 与 `http://127.0.0.1:<port>` 跨源、axum 无 CORS）：经 Tauri 命令 `mcp_debug_call`（Rust `debug.rs` → `mcp::debug_call`）复用工具真链路；候选值在页面加载时经 `list_expressions` / `list_models` 一次拉回并填充 datalist（动作名嵌在 `steps` 数组里，用多行 JSON 文本框输入，数组解析留在 `args.ts::collect`）。
 - 类型门禁：`make check`（= `npm run build`，`tsc --noEmit` + vite build）。tsconfig 已开 `noUnusedLocals` / `noUnusedParameters` / `noFallthroughCasesInSwitch`。
-- 单元测试：`make unit`（= `npm run test`，vitest）覆盖领域层与纯函数（`shared/domain/*.test.ts`、`debug/args.test.ts`）以及应用层分发（`mascot/application/dispatcher.test.ts`，以替身注入 `MascotController` / `CommandCtx`）；DOM / Tauri / pixi 依赖的部分不在此测（以 `make test` 冒烟 + 人工确认为准）。`vitest.config.ts` 复用 `vite.config.ts` 的 root 与 `@` 别名（单一来源）。
+- 单元测试：`make unit`（= `npm run test`，vitest）覆盖领域层与纯函数（`shared/domain/*.test.ts`、`debug/args.test.ts`）、应用层分发（`mascot/application/dispatcher.test.ts`，以替身注入 `MascotController` / `CommandCtx`）与渲染层纯逻辑（`mascot/render/live2d/motion-catalog.test.ts` 动作解析/计划、`motion-queue.test.ts` 串行队列：假端口 + 假计时器验证 token 打断、计时器清理、兜底放行）；`shared/domain/motion-limits.test.ts` 直接把 `play_motion` 的数值上限与 `src/mcp/tools.json` 互校，契约漂移即红灯。DOM / Tauri / pixi 依赖的部分不在此测（以冒烟 + 人工确认为准）。`vitest.config.ts` 复用 `vite.config.ts` 的 root 与 `@` 别名（单一来源）。
 - `set_model` 的结果（含失败）必须包成 `SetModelOutcome` 信封塞进 `result` 字段用 `okValue` 返回：Rust 侧只转发 `result`，走 `fail()` 会丢失结构化错误。
 - Vite 的 `root` 是 `src/frontend/`，静态资源根是 `models/`（`/Haru/...` 即 `models/Haru/...`，见 `vite.config.ts`）；模型路径只能来自档案配置，禁止写死。开发端口 5173 与 `tauri.conf.json` 的 `devUrl` 绑定（`strictPort`），不要改动。
 - 导入模型资源经自定义协议提供（Windows 为 `http://mascot-model.localhost/<id>/<相对路径>`，其它平台 `mascot-model://localhost/...`）：档案 `config.modelDir` 必须由 `shared/domain/imported.ts::importedModelDir` 拼出，禁止写死 URL；非 Tauri 浏览器调试下列表为空、代码须照常启动。
