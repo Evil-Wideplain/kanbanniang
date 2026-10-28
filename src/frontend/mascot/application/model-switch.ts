@@ -17,6 +17,8 @@ export interface ModelManager {
   controller(): MascotController | null;
   /** 开关视线跟随：作用于当前控制器并记住，供后续热切换沿用。 */
   setGaze(enabled: boolean): void;
+  /** 注入台词出口：作用于当前控制器并记住，热切换后自动挂到新控制器上。 */
+  setSpeechSink(sink: (text: string) => void): void;
 }
 
 /** 按档案创建 Live2D 控制器。失败向上抛。 */
@@ -38,6 +40,8 @@ export async function createModelManager(
   let currentModelId = "";
   let swapping = false;
   let gazeEnabled = initialGaze;
+  /** 台词出口（气泡回调）：记住并在每次热切换后重新挂到新控制器。 */
+  let speechSink: ((text: string) => void) | null = null;
 
   // 1) 按初始档案初始化控制器（未知/空 id 回退默认档案）
   const profile = getProfile(initialModelId) ?? getProfile(DEFAULT_MODEL_ID);
@@ -117,8 +121,9 @@ export async function createModelManager(
       oldCanvas.replaceWith(newCanvas);
       controller = next;
       currentModelId = target.id;
-      // 新控制器沿用当前视线跟随设置
+      // 新控制器沿用当前视线跟随设置与台词出口
       next.setGaze(gazeEnabled);
+      if (speechSink) next.setSpeechSink(speechSink);
       (window as any).__mascot = controller;
       console.info("[mascot] 模型切换完成", {
         from,
@@ -143,6 +148,10 @@ export async function createModelManager(
     setGaze: (enabled: boolean) => {
       gazeEnabled = enabled;
       controller?.setGaze(enabled);
+    },
+    setSpeechSink: (sink: (text: string) => void) => {
+      speechSink = sink;
+      controller?.setSpeechSink(sink);
     },
   };
 }

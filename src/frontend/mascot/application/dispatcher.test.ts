@@ -29,9 +29,10 @@ function fakeController(over: Partial<MascotController> = {}): MascotController 
     speaking: false,
   };
   return {
-    motion: () => ({ applied: "idle", fallback: false }),
+    playMotions: () => [],
     expression: () => ({ applied: "neutral", fallback: false }),
     speak: () => {},
+    setSpeechSink: () => {},
     moveTo: () => {},
     idle: () => {},
     setGaze: () => {},
@@ -49,31 +50,19 @@ function run(action: MascotAction, params: Record<string, unknown>, c: MascotCon
 }
 
 describe("handleCommand 动作型", () => {
-  it("play_motion 传递请求名与 index，回传真实生效结果", async () => {
-    let seen: { name: string; index?: number } | undefined;
-    const c = fakeController({
-      motion: (name, index) => {
-        seen = { name, index };
-        return { applied: "TapBody", fallback: true, index: 2 };
-      },
-    });
-    const res = await run("play_motion", { motion: "wave", index: 2 }, c);
-    expect(seen).toEqual({ name: "wave", index: 2 });
-    expect(res).toEqual({ id: "req-1", ok: true, result: { applied: "TapBody", fallback: true, index: 2 } });
+  it("play_motion 缺少 steps 时回 fail（不再接受扁平 motion 参数）", async () => {
+    const res = await run("play_motion", { motion: "wave" }, fakeController());
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain("steps 必须是非空数组");
   });
 
-  it("play_motion 缺省名为 idle", async () => {
-    let seen = "";
-    const c = fakeController({ motion: (name) => ((seen = name), { applied: "idle", fallback: false }) });
-    await run("play_motion", {}, c);
-    expect(seen).toBe("idle");
-  });
-
-  it("speak 先走气泡回调，再驱动控制器", async () => {
-    const order: string[] = [];
-    const c = fakeController({ speak: () => order.push("controller") });
-    await run("speak", { text: "你好" }, c, { showBubble: () => order.push("bubble"), setModel: async () => ({ ok: true, model: "", mode: "live2d", modelFile: null }), currentModelId: () => "" });
-    expect(order).toEqual(["bubble", "controller"]);
+  it("speak 只走控制器（气泡唯一出口在控制器的 speechSink）", async () => {
+    const said: string[] = [];
+    const c = fakeController({ speak: (text) => void said.push(text) });
+    const res = await run("speak", { text: "你好" }, c);
+    expect(said).toEqual(["你好"]);
+    expect(res.ok).toBe(true);
+    expect(res.result).toBe("ok");
   });
 
   it("move_in_window 移动控制器锚点并回 ok", async () => {
@@ -119,6 +108,186 @@ describe("handleCommand 查询型", () => {
   });
 });
 
+describe("handleCommand 动作序列", () => {
+  it("play_motion 把规整后的步骤交给控制器，并回传每步结果", async () => {
+    let seen: { motion: string; index?: number; holdMs?: number }[] | undefined;
+    const c = fakeController({
+      playMotions: (steps) => {
+        seen = steps;
+        return steps.map((s) => ({
+          requested: s.motion,
+          applied: "TapBody",
+          fallback: true,
+          index: s.index,
+          holdMs: s.holdMs,
+        }));
+      },
+    });
+    const res = await run(
+      "play_motion",
+      { steps: [{ motion: "wave" }, { motion: "Idle", index: 1.7, holdMs: 99999 }] },
+      c,
+    );
+    expect(seen).toEqual([{ motion: "wave" }, { motion: "Idle", index: 1, holdMs: 5000 }]);
+    expect(res.ok).toBe(true);
+    expect(res.result).toEqual([
+      { requested: "wave", applied: "TapBody", fallback: true, index: undefined, holdMs: undefined },
+      { requested: "Idle", applied: "TapBody", fallback: true, index: 1, holdMs: 5000 },
+    ]);
+  });
+
+  it("play_motion 规整 holdMs：负数截断到 0 并告警", async () => {
+    const warn = vi.mocked(console.warn);
+    warn.mockClear();
+    let seen: { motion: string; holdMs?: number }[] | undefined;
+    const c = fakeController({
+      playMotions: (steps) => {
+        seen = steps;
+        return [];
+      },
+    });
+    await run("play_motion", { steps: [{ motion: "Idle", holdMs: -20 }] }, c);
+    expect(seen).toEqual([{ motion: "Idle", holdMs: 0 }]);
+    // 静默容错必须留痕：规整动作要能查
+    expect(warn.mock.calls.some((call) => String(call[0]).includes("参数已规整"))).toBe(true);
+  });
+
+  it("play_motion 拒绝 name 别名与非法的 index（负面 index 按随机并告警）", async () => {
+    const c = fakeController({ playMotions: () => [] });
+    const named = await run("play_motion", { steps: [{ name: "Idle" }] }, c);
+    expect(named.ok).toBe(false);
+    expect(named.error).toContain("第 1 步缺少 motion");
+
+    let seen: { motion: string; index?: number }[] | undefined;
+    const c2 = fakeController({
+      playMotions: (steps) => {
+        seen = steps;
+        return [];
+      },
+    });
+    await run("play_motion", { steps: [{ motion: "Idle", index: -3 }] }, c2);
+    expect(seen).toEqual([{ motion: "Idle" }]);
+  });
+
+  it("play_motion 透传每步的 expression / text（空串按未给处理）", async () => {
+    let seen: { motion: string; expression?: string; text?: string }[] | undefined;
+    const c = fakeController({
+      playMotions: (steps) => {
+        seen = steps;
+        return [];
+      },
+    });
+    await run(
+      "play_motion",
+      {
+        steps: [
+          { motion: "TapBody", expression: "F01", text: "你好" },
+          { motion: "Idle", expression: "  ", text: "" },
+        ],
+      },
+      c,
+    );
+    expect(seen).toEqual([{ motion: "TapBody", expression: "F01", text: "你好" }, { motion: "Idle" }]);
+  });
+
+  it("play_motion 不接受字符串形式的 steps（JSON 解析留在调试面板层）", async () => {
+    const c = fakeController({ playMotions: () => [] });
+    const res = await run("play_motion", { steps: '[{"motion":"Idle"}]' }, c);
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain("steps 必须是非空数组");
+  });
+
+  it("play_motion 规整告警按「步号 + 问题」结构化落日志", async () => {
+    const warn = vi.mocked(console.warn);
+    warn.mockClear();
+    const c = fakeController({ playMotions: () => [] });
+    await run("play_motion", { steps: [{ motion: "Idle" }, { motion: "Idle", holdMs: 99999 }] }, c);
+    const payloads = warn.mock.calls
+      .filter((call) => String(call[0]).includes("参数已规整"))
+      .map((call) => call[1] as { step: number; problem: string });
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]?.step).toBe(2);
+    expect(payloads[0]?.problem).toContain("holdMs");
+  });
+
+  it("play_motion 逐条记录每步结果日志（便于排查未生效/回退）", async () => {
+    const info = vi.mocked(console.info);
+    info.mockClear();
+    const c = fakeController({
+      playMotions: (steps) =>
+        steps.map((s) => ({ requested: s.motion, applied: "TapBody", fallback: false })),
+    });
+    await run("play_motion", { steps: [{ motion: "idle" }, { motion: "wave" }] }, c);
+    const messages = info.mock.calls.map((call) => String(call[0]));
+    // 只约束「每步都留痕」，不锁死具体文案（文案属实现细节，调整不应弄红测试）
+    const stepLogs = messages.filter((m) => m.includes("play_motion 第"));
+    expect(stepLogs.length).toBeGreaterThanOrEqual(2);
+    expect(stepLogs.every((m) => m.includes("play_motion 第"))).toBe(true);
+  });
+
+  it("play_motion 透传 idle 开关（播完后调用 set_idle，兼容字符串 true）", async () => {
+    let seenIdle: boolean | undefined;
+    const c = fakeController({
+      playMotions: (_steps, options) => {
+        seenIdle = options?.idle;
+        return [];
+      },
+    });
+    await run("play_motion", { steps: [{ motion: "Idle" }], idle: true }, c);
+    expect(seenIdle).toBe(true);
+
+    await run("play_motion", { steps: [{ motion: "Idle" }], idle: "true" }, c);
+    expect(seenIdle).toBe(true);
+
+    await run("play_motion", { steps: [{ motion: "Idle" }] }, c);
+    expect(seenIdle).toBe(false);
+  });
+
+  it("play_motion 非法 steps 回 fail 且不触碰控制器", async () => {
+    let called = false;
+    const c = fakeController({
+      playMotions: () => {
+        called = true;
+        return [];
+      },
+    });
+    const empty = await run("play_motion", { steps: [] }, c);
+    expect(empty.ok).toBe(false);
+    expect(empty.error).toContain("非空数组");
+
+    const notArray = await run("play_motion", { steps: "Idle" }, c);
+    expect(notArray.ok).toBe(false);
+
+    const missing = await run("play_motion", { steps: [{ index: 1 }] }, c);
+    expect(missing.error).toContain("第 1 步缺少 motion");
+
+    expect(called).toBe(false);
+  });
+
+  it("play_motion 不设步数上限（长队列整段交给控制器）", async () => {
+    let seen: { motion: string }[] | undefined;
+    const c = fakeController({
+      playMotions: (steps) => {
+        seen = steps;
+        return steps.map((s) => ({ requested: s.motion, applied: "Idle", fallback: false }));
+      },
+    });
+    const res = await run(
+      "play_motion",
+      { steps: Array.from({ length: 30 }, () => ({ motion: "Idle" })) },
+      c,
+    );
+    expect(res.ok).toBe(true);
+    expect(seen).toHaveLength(30);
+    expect((res.result as unknown[]).length).toBe(30);
+  });
+
+  it("play_motion 在未加载看板娘时回失败", async () => {
+    const res = await run("play_motion", { steps: [{ motion: "Idle" }] }, null);
+    expect(res).toEqual({ id: "req-1", ok: false, result: null, error: "看板娘未加载（没有可用 Live2D 模型）" });
+  });
+});
+
 describe("handleCommand 异步 / 失败路径", () => {
   it("move 缺上下文时回 ok=false 信封", async () => {
     const res = await run("move", { x: 0.1, y: 0.2 }, fakeController());
@@ -158,16 +327,16 @@ describe("handleCommand 异步 / 失败路径", () => {
 
   it("控制器抛异常时转 fail 并不外溢", async () => {
     const c = fakeController({
-      motion: () => {
+      playMotions: () => {
         throw new Error("控制器异常");
       },
     });
-    const res = await run("play_motion", { motion: "wave" }, c);
+    const res = await run("play_motion", { steps: [{ motion: "wave" }] }, c);
     expect(res).toEqual({ id: "req-1", ok: false, result: null, error: "控制器异常" });
   });
 
   it("未加载看板娘时动作回失败，但 set_model 仍可恢复", async () => {
-    const res = await run("play_motion", { motion: "wave" }, null);
+    const res = await run("play_motion", { steps: [{ motion: "wave" }] }, null);
     expect(res).toEqual({ id: "req-1", ok: false, result: null, error: "看板娘未加载（没有可用 Live2D 模型）" });
 
     const ctx = { setModel: async () => ({ ok: true, model: "haru", mode: "live2d", modelFile: "Haru.moc3" }), currentModelId: () => "" } as CommandCtx;

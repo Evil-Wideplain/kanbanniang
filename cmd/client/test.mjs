@@ -72,7 +72,20 @@ async function main() {
     return `mode=${st.mode} modelId=${st.modelId ?? "(未指定)"}`;
   });
 
-  await step("play_motion", () => call("play_motion", { motion: motions[0] ?? "idle" }));
+  await step("play_motion", async () => {
+    // 顺带覆盖「动作 + 表情 + 台词」同步：第一步带 expression/text，第二步只播动作
+    const raw = JSON.parse(
+      await call("play_motion", {
+        steps: [
+          { motion: motions[0] ?? "idle", expression: expressions[0] ?? "neutral", text: "第一步：连播开始" },
+          { motion: motions[1] ?? motions[0] ?? "idle", holdMs: 300 },
+        ],
+      }),
+    );
+    const list = Array.isArray(raw) ? raw : [];
+    if (list.length !== 2) throw new Error(`play_motion 应回 2 步结果，实际 ${list.length}`);
+    return list.map((o) => `${o.requested}→${o.applied ?? "无目标"}`).join(" → ");
+  });
   await step("set_expression", () =>
     call("set_expression", { expression: expressions[0] ?? "neutral" }),
   );

@@ -7,9 +7,12 @@ import type {
   MascotCommand,
   MascotController,
   MascotResult,
+  MotionPlayOptions,
+  MotionStep,
   SetModelOutcome,
   WindowMoveOutcome,
 } from "@/shared/domain/types";
+import { PLAY_MOTION_HOLD_MS_MAX } from "@/shared/domain/motion-limits";
 import { allProfiles, DEFAULT_MODEL_ID } from "@/shared/domain/profiles";
 
 /**
@@ -20,15 +23,13 @@ export interface CommandCtx {
   setModel(id: string): Promise<SetModelOutcome>;
   /** 当前档案 id。 */
   currentModelId(): string;
-  /** 显示说话气泡（由 UI 层注入，先于口型/表情反馈触发）。 */
-  showBubble?(text: string): void;
   /** 平滑移动主窗口到工作区归一化坐标（Tauri 命令 move_window，由 main.ts 注入；非 Tauri 环境缺失）。 */
   moveWindow?(x: number, y: number): Promise<WindowMoveOutcome>;
 }
 
 /**
  * 把后端转发过来的 MCP 指令分发给看板娘控制器，并准备好回传结果。
- * 查询型动作（list_* / get_status / set_model / list_models / move）会返回数据，
+ * 查询型动作（list_* / get_status / set_model / list_models / move / play_motion）会返回数据，
  * 其它动作返回 "ok"。main.ts 负责把结果通过 Tauri 事件回传给后端。
  *
  * set_model 涉及异步加载、move 涉及窗口滑行，可能返回 Promise；调用方用
@@ -44,13 +45,25 @@ export function handleCommand(
     switch (cmd.action) {
       case "play_motion": {
         if (!c) return notReady(cmd.id);
-        const requested = String(p.motion ?? p.name ?? "idle");
-        const outcome = c.motion(
-          requested,
-          typeof p.index === "number" ? p.index : undefined,
-        );
-        logOutcome("play_motion", requested, outcome);
-        return okValue(cmd.id, outcome);
+        const parsed = parseSteps(p.steps);
+        if (!parsed.ok) return fail(cmd.id, parsed.error);
+        // 静默容错必须留痕：越界/取整/截断这类「按契约不该出现」的输入要可查
+        for (const warning of parsed.warnings) {
+          console.warn("[mascot] play_motion 参数已规整", {
+            step: warning.step,
+            problem: warning.problem,
+          });
+        }
+        const options: MotionPlayOptions = { idle: parseFlag(p.idle) };
+        const outcomes = c.playMotions(parsed.steps, options);
+        console.info("[mascot] play_motion 已入队", {
+          steps: outcomes.length,
+          fallback: outcomes.filter((o) => o.fallback).length,
+          idle: options.idle === true,
+        });
+        // 每步解析结果按「生效/回退/无目标」落日志（步数不设上限，长队列会逐条记录）
+        outcomes.forEach((outcome, i) => logOutcome(`play_motion 第${i + 1}步`, outcome.requested, outcome));
+        return okValue(cmd.id, outcomes);
       }
       case "set_expression": {
         if (!c) return notReady(cmd.id);
@@ -62,8 +75,8 @@ export function handleCommand(
       case "speak": {
         if (!c) return notReady(cmd.id);
         const text = String(p.text ?? "");
-        console.info("[mascot] speak 气泡展示", { chars: text.length });
-        ctx?.showBubble?.(text);
+        // 气泡唯一出口在控制器（经 speechSink 显示），分发层只负责把台词转交控制器
+        console.info("[mascot] speak 转交控制器", { chars: text.length });
         c.speak(text);
         return okValue(cmd.id, "ok");
       }
@@ -172,6 +185,87 @@ function logOutcome(kind: string, requested: string, outcome: ActionOutcome): vo
   }
 }
 
+/** play_motion 参数规整告警：带步号与问题描述，调用方只负责格式化落日志。 */
+interface StepWarning {
+  /** 1 起的步号（与 Agent / 调试面板看到的步骤顺序一致）。 */
+  step: number;
+  /** 具体问题描述（含原始值），不含步号前缀，避免日志里重复。 */
+  problem: string;
+}
+
+type ParsedSteps =
+  | { ok: true; steps: MotionStep[]; warnings: StepWarning[] }
+  | { ok: false; error: string };
+
+/** 布尔参数容错：接受 true / 1 / "true" / "1"（调试面板输入框发出的是字符串）。 */
+function parseFlag(raw: unknown): boolean {
+  return raw === true || raw === 1 || raw === "true" || raw === "1";
+}
+
+/**
+ * 校验并规整 play_motion 的 steps 参数（纯函数，便于单测）。
+ * 步数不设上限：队列逐步骤行、新调用会打断旧队列，长度由调用方自担；
+ * 非法结构回传错误信息；合法结构按序返回规整后的步骤（index 取整、holdMs 截断到上限），
+ * 规整动作以 warnings（步号 + 问题）回传，由调用方格式化落日志（不静默改参）。
+ */
+function parseSteps(raw: unknown): ParsedSteps {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return { ok: false, error: "steps 必须是非空数组（每项形如 {motion, index?, holdMs?, expression?, text?}）" };
+  }
+  const steps: MotionStep[] = [];
+  const warnings: StepWarning[] = [];
+  for (let i = 0; i < raw.length; i += 1) {
+    const item: unknown = raw[i];
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      return { ok: false, error: `第 ${i + 1} 步不是对象` };
+    }
+    const rec = item as Record<string, unknown>;
+    const name = typeof rec.motion === "string" ? rec.motion : "";
+    if (!name.trim()) return { ok: false, error: `第 ${i + 1} 步缺少 motion` };
+    const step: MotionStep = { motion: name };
+    if (rec.index !== undefined) {
+      if (typeof rec.index !== "number" || !Number.isFinite(rec.index) || rec.index < 0) {
+        warnings.push({
+          step: i + 1,
+          problem: `index 非法（${String(rec.index)}），按缺省随机变体处理`,
+        });
+      } else {
+        step.index = Math.floor(rec.index);
+        if (step.index !== rec.index) {
+          warnings.push({ step: i + 1, problem: `index 取整为 ${step.index}` });
+        }
+      }
+    }
+    if (rec.holdMs !== undefined) {
+      if (typeof rec.holdMs !== "number" || !Number.isFinite(rec.holdMs)) {
+        warnings.push({
+          step: i + 1,
+          problem: `holdMs 非数值（${String(rec.holdMs)}），按 0 处理`,
+        });
+        step.holdMs = 0;
+      } else {
+        step.holdMs = Math.min(Math.max(rec.holdMs, 0), PLAY_MOTION_HOLD_MS_MAX);
+        if (step.holdMs !== rec.holdMs) {
+          warnings.push({
+            step: i + 1,
+            problem: `holdMs ${rec.holdMs} 截断为 ${step.holdMs}`,
+          });
+        }
+      }
+    }
+    // 表情/台词与本步动作同时生效（不打断播放），空串按未给处理
+    if (typeof rec.expression === "string" && rec.expression.trim() !== "") {
+      step.expression = rec.expression;
+    }
+    if (typeof rec.text === "string" && rec.text.trim() !== "") {
+      step.text = rec.text;
+    }
+    steps.push(step);
+  }
+  return { ok: true, steps, warnings };
+}
+
+/** 查询/动作结果的成功信封。 */
 function okValue(id: string, result: unknown): MascotResult {
   return { id, ok: true, result };
 }

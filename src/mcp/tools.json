@@ -1,16 +1,34 @@
 [
   {
     "name": "play_motion",
-    "description": "播放一个动作。名字可用 list_motions 查询真实组名，或语义名（idle / speak 等，按档案别名映射，忽略大小写与下划线）；未命中时自动回退随机点触动作。返回 {applied, fallback, index}：applied 为实际播放的组名，fallback=true 表示走了回退。",
+    "description": "播放动作：按顺序串行播放动作，每步等该动作真正播完再进下一步（步数不设上限，新调用会打断旧队列）。steps 为 [{motion, index?, holdMs?, expression?, text?}]；motion 可用 list_motions 的真实组名或语义名（idle / speak 等，按档案别名映射，忽略大小写与下划线），未命中时回退随机点触动作；index 缺省随机（相邻步会自动避开同组同序号，越界按缺省处理并在日志告警）；holdMs 是播完后的额外停留（0~5000ms，缺省 0，超出按边界截断并在日志告警）；expression / text 在本步开始时同时生效（换表情、显示台词，都不打断动作），因此「边做动作边换表情、边说话」可以放在同一次调用里。idle=true 时整个序列播完后调用 idle（回到默认初始状态：中性表情 + 待机动作）。动作异常时单步兜底 12s 放行。新调用会打断正在进行的播放。返回每步解析结果数组 {requested, applied, fallback, index, holdMs, expression, text}：applied 为解析出的目标组名（库在异步播放时才决定接受与否，是否真正生效见日志），fallback=true 表示走了回退。播放异步进行，完成/打断/每步生效或回退均可查日志。",
     "action": "play_motion",
     "query": true,
     "inputSchema": {
       "type": "object",
       "properties": {
-        "motion": { "type": "string", "description": "动作组名" },
-        "index": { "type": "integer", "description": "动作序号（可选）" }
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "description": "动作序列，按顺序串行播放",
+          "items": {
+            "type": "object",
+            "properties": {
+              "motion": { "type": "string", "minLength": 1, "description": "动作组名或语义名（同 list_motions 的返回）" },
+              "index": { "type": "integer", "minimum": 0, "description": "动作变体序号（可选，缺省随机）" },
+              "holdMs": { "type": "number", "minimum": 0, "maximum": 5000, "description": "本步动作播完后的额外停留毫秒数（可选，0~5000，缺省 0）" },
+              "expression": { "type": "string", "description": "本步开始时同时切换的表情（可选，不打断动作）" },
+              "text": { "type": "string", "description": "本步开始时同时说出的台词（可选，显示气泡，不打断动作）" }
+            },
+            "required": ["motion"]
+          }
+        },
+        "idle": {
+          "type": "boolean",
+          "description": "整个序列播放完成后是否调用 idle（回到默认初始状态：中性表情 + 待机动作）；缺省 false"
+        }
       },
-      "required": ["motion"]
+      "required": ["steps"]
     }
   },
   {

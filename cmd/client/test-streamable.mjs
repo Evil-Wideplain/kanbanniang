@@ -115,6 +115,18 @@ async function main() {
   assert(speak.isError === false, `speak 失败: ${speak.text}`);
   process.stdout.write(`✅ speak: ${speak.text}\n`);
 
+  const sequence = await callTool(
+    'play_motion',
+    { steps: [{ motion: 'Idle', holdMs: 200 }, { motion: 'TapBody', holdMs: 200 }] },
+    init.sessionId,
+  );
+  assert(sequence.isError === false, `play_motion 失败: ${sequence.text}`);
+  const planned = JSON.parse(sequence.text);
+  assert(Array.isArray(planned) && planned.length === 2, `play_motion 应回 2 步，实际 ${sequence.text}`);
+  process.stdout.write(
+    `✅ play_motion: ${planned.map((step) => `${step.requested}→${step.applied ?? '无目标'}`).join(' → ')}\n`,
+  );
+
   process.stdout.write('\n🎉 Streamable HTTP 传输全部通过。\n');
 }
 

@@ -39,12 +39,13 @@ async function bootstrap() {
   applyOpacity(settings.opacity);
   const initialCanvas = document.getElementById("stage") as HTMLCanvasElement;
   const mgr = await createModelManager(initialCanvas, settings.modelId, settings.gazeFollow);
+  // 台词出口：动作序列里每步的 text 也走同一个气泡（热切换后自动沿用）
+  mgr.setSpeechSink((text) => bubble.show(text));
 
-  // 4) 指令上下文（模型切换、气泡、窗口移动注入 dispatcher）
+  // 4) 指令上下文（模型切换、窗口移动注入 dispatcher；气泡唯一出口是控制器的 speechSink）
   const ctx: CommandCtx = {
     setModel: (id) => mgr.setModel(id),
     currentModelId: () => mgr.currentModelId(),
-    showBubble: (text) => bubble.show(text),
     moveWindow: (x, y) => moveWindow(x, y),
   };
 

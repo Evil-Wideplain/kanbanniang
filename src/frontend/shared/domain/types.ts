@@ -150,19 +150,58 @@ export interface ActionOutcome {
 }
 
 /**
+ * 动作序列中的一步（play_motion 的输入单元）。
+ * 控制器总是等该步动作真正播完再进下一步；`holdMs` 只是播完后的额外停留时长。
+ */
+export interface MotionStep {
+  /** 动作组名或语义名（同 list_motions 的返回）。 */
+  motion: string;
+  /** 动作变体序号；省略表示随机变体。 */
+  index?: number;
+  /** 本步动作播完后的额外停留毫秒数（默认 0：播完立刻进下一步）。 */
+  holdMs?: number;
+  /** 本步开始时同时切换的表情（可选，不打断动作）。 */
+  expression?: string;
+  /** 本步开始时同时说出的台词（可选，显示气泡；不打断动作）。 */
+  text?: string;
+}
+
+/** 动作序列中一步的执行结果（多一个 requested 便于对照请求名与回退）。 */
+export interface MotionStepOutcome extends ActionOutcome {
+  /** 调用方请求的原始名字。 */
+  requested: string;
+  /** 本步采用的动作播完后额外停留毫秒数（未给即 0）。 */
+  holdMs?: number;
+  /** 本步同时切换的表情（原样回显，便于核对）。 */
+  expression?: string;
+  /** 本步同时说出的台词（原样回显）。 */
+  text?: string;
+}
+
+/** play_motion 的整体播放选项。 */
+export interface MotionPlayOptions {
+  /** 整个序列播放完成后调用 set_idle（中性表情 + 待机动作）。缺省 false。 */
+  idle?: boolean;
+}
+
+/**
  * 看板娘控制器接口：MCP 事件分发逻辑只依赖它，
  * 因此与具体 Live2D 渲染实现解耦。
  */
 export interface MascotController {
   /**
-   * 播放一个动作组（如 "tap_body" / "wave" / "idle"，index 可选、缺省随机变体）。
-   * 名字先按档案别名/归一化匹配；未命中时回退相关动作组而非静默失败。
+   * 按序串行播放动作序列（单步即「播一个动作」）。
+   * 名字先按档案别名/归一化匹配，未命中回退点触动作；每步等播完再进下一步。
+   * `options.idle` 为真时，整段播完后调用 set_idle（中性表情 + 待机动作）。
+   * 返回每一步的解析结果（同步）；实际播放异步进行，完成/被打断只体现在日志与渲染上。
    */
-  motion(name: string, index?: number): ActionOutcome;
-  /** 设置表情（如 "happy" / "angry" / "neutral"）。未命中时回退为默认表情。 */
+  playMotions(steps: MotionStep[], options?: MotionPlayOptions): MotionStepOutcome[];
+  /** 设置表情（如 "happy" / "angry" / "neutral"）。未命中时回退为默认表情；不打断动作播放。 */
   expression(name: string): ActionOutcome;
-  /** 说话：展示气泡并做口型/表情反馈。 */
+  /** 说话：展示气泡并做口型/表情反馈；动作播放中只更新气泡，不打断动作。 */
   speak(text: string): void;
+  /** 注入台词出口（气泡显示），由组合根接线，渲染层不直接操作 DOM。 */
+  setSpeechSink(sink: (text: string) => void): void;
   /** 移动到归一化坐标（x,y ∈ [0,1]，相对窗口）。 */
   moveTo(x: number, y: number): void;
   /** 回到待机。 */

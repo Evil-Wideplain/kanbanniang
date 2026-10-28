@@ -202,8 +202,8 @@ npm run plugin:uninstall   # dsh plugin --profile desktop remove kanbanniang
 
 | 工具 | 参数 | 说明 |
 |------|------|------|
-| `play_motion` | `motion: string`, `index?: number` | 播动作（idle/tap_body/pinch_in/pinch_out/wave/shake…） |
-| `set_expression` | `expression: string` | 换表情（neutral/happy/angry/surprised/sad…） |
+| `play_motion` | `steps: {motion, index?, holdMs?, expression?, text?}[]`, `idle?: boolean` | 播动作：串行连播动作（步数不设上限），每步等动作真正播完再继续；`holdMs` 是播完后的额外停留（0~5000ms）；`expression` / `text` 在本步开始时同时生效（换表情、显示台词，都不打断动作）；`idle=true` 时整段播完调用 `set_idle`（中性表情 + 待机）；新调用会打断旧播放 |
+| `set_expression` | `expression: string` | 换表情（neutral/happy/angry/surprised/sad…）；动作播放中也可用，不打断动作 |
 | `speak` | `text: string` | 说话（显示气泡 + 反馈） |
 | `move` | `x: number`, `y: number` | 平滑移动**整个窗口**到工作区坐标（归一化 0~1，约 0.6s；返回最终坐标） |
 | `move_in_window` | `x: number`, `y: number` | 调整看板娘在窗口内的站位（归一化 0~1，不动窗口） |
