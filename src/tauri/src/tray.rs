@@ -18,7 +18,7 @@ use tauri::{
 /// 主窗口标签（与 `tauri.conf.json` 的 `windows[].label` 对应）。
 pub(crate) const MAIN_WINDOW: &str = "main";
 /// 设置窗口标签（`tauri.conf.json` 中初始隐藏，托盘「设置…」唤出）。
-const SETTINGS_WINDOW: &str = "settings";
+pub(crate) const SETTINGS_WINDOW: &str = "settings";
 /// 调试面板窗口标签（仅开发构建由 `debug.rs` 创建，托盘「MCP 调试…」唤出）。
 #[cfg(debug_assertions)]
 pub(crate) const DEBUG_WINDOW: &str = "debug";

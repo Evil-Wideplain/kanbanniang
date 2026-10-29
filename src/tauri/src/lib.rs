@@ -42,6 +42,7 @@ pub fn run() {
             commands::list_imported_models,
             commands::import_models,
             commands::remember_model,
+            commands::set_click_through,
             debug::mcp_debug_call
         ])
         // 常驻托盘：关窗只隐藏不退出，真正结束进程走托盘菜单「退出」。
@@ -94,6 +95,9 @@ pub fn run() {
 
             // 把窗口置顶 / 开机自启等运行态偏好应用到当前进程（不透明度由主窗口前端应用）。
             commands::apply_startup(&handle, &settings.get());
+
+            // 低分屏适配：工作区放不下设计尺寸时收缩窗口（前端布局按视口摆放，只减留白）。
+            commands::fit_windows_to_work_area(&handle);
 
             // 创建共享状态并托管给 Tauri，同时交给 MCP 服务与结果监听器使用。
             let state = Arc::new(state::AppStateInner::new(handle.clone()));

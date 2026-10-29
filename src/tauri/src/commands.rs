@@ -12,6 +12,9 @@
 //! 以及导入模型命令：`list_imported_models` / `import_models`（拖入文件夹或 zip 后
 //! 解析并落盘）与 `remember_model`（记住当前模型，避免把整份设置再从主窗口写一遍）。
 //!
+//! 另有窗口鼠标穿透开关 `set_click_through`（前端按角色像素命中结果动态调用），
+//! 以及启动期窗口工作区适配 `fit_windows_to_work_area`（低分屏不裁掉角色脚部/设置页按钮）。
+//!
 //! 装配（`lib.rs`）负责托管所需的共享状态；本模块只做用例编排。
 
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -216,6 +219,52 @@ fn apply_autostart(app: &AppHandle, enabled: bool) {
         Ok(()) => log::info!("[settings] 开机自启已{state_text}"),
         Err(e) => log::warn!("[settings] 应用开机自启失败（{state_text}）: {e}"),
     }
+}
+
+/// 启动时按工作区收缩主窗口与设置窗口：设计尺寸（主 640x800 / 设置 440x760）在
+/// 1366x768 这类小屏上放不下，超出部分（角色脚部、设置页底部按钮）会被裁掉，
+/// 且 `move_window` 的可移动范围会被 `saturating_sub` 挤成 0，纵向归一化参数静默失效。
+///
+/// 为什么放在后端：窗口尺寸是窗口系统属性，前端只能读视口；前端布局按视口摆放
+/// （`layout.ts::computeModelFit` + `bubbleBottomPx`），窗口变小只减少四周留白，
+/// 角色像素尺寸与气泡位置都会自动跟随。只收缩不放大——工作区足够时保留设计尺寸。
+/// 失败仅告警，保留配置尺寸、不阻断启动。
+pub fn fit_windows_to_work_area(app: &AppHandle) {
+    for label in [tray::MAIN_WINDOW, tray::SETTINGS_WINDOW] {
+        let Some(window) = app.get_webview_window(label) else {
+            log::warn!("[window] 未找到窗口 {label}，跳过工作区适配");
+            continue;
+        };
+        if let Err(e) = shrink_to_work_area(&window) {
+            log::warn!("[window] 窗口 {label} 工作区适配失败（保留配置尺寸）: {e}");
+        }
+    }
+}
+
+/// 按工作区收缩单个窗口：物理像素读取、逻辑尺寸写回；外框已完整落在工作区内则不动。
+fn shrink_to_work_area(window: &WebviewWindow) -> anyhow::Result<()> {
+    let monitor = window
+        .current_monitor()?
+        .ok_or_else(|| anyhow::anyhow!("窗口不在任何显示器上"))?;
+    let work = *monitor.work_area();
+    let outer = window.outer_size()?;
+    // 快路径：外框已完整落在工作区内（设置窗口通常走这里），不做任何窗口操作
+    if outer.width <= work.size.width && outer.height <= work.size.height {
+        return Ok(());
+    }
+    let scale = window.scale_factor()?;
+    let inner = window.inner_size()?;
+    let width = (f64::from(inner.width) / scale).min(f64::from(work.size.width) / scale);
+    let height = (f64::from(inner.height) / scale).min(f64::from(work.size.height) / scale);
+    window.set_size(tauri::LogicalSize::new(width, height))?;
+    window.center()?; // 收缩后重新居中，避免贴边或跨越到另一块屏幕
+    log::info!(
+        "[window] {} 工作区 {}x{}（物理像素）放不下窗口，收缩为 {width:.0}x{height:.0}（逻辑像素）",
+        window.label(),
+        work.size.width,
+        work.size.height
+    );
+    Ok(())
 }
 
 /// 窗口滑动代次守卫：新请求递增代次，旧滑动循环检测到代次变化即让位返回。
@@ -458,4 +507,19 @@ pub fn remember_model(
     store.set(next);
     log::info!("[model_store] 已记住当前模型 {model_id}");
     Ok(())
+}
+
+/// 切换主窗口的鼠标穿透：`ignore=true` 时窗口不接收鼠标消息（事件落到下层窗口）。
+///
+/// 为什么由前端驱动：可交互区域是「角色像素」而非整个窗口，只有前端能按 Live2D 的
+/// 像素命中结果判断光标是否落在角色上，故由前端在命中结果变化时调用本命令。
+/// 只改输入命中行为，不影响视觉透明度（不透明度仍由 `mascot:settings` 落到画布）。
+/// 重复设置同一状态是幂等的，因此前端无需先读旧状态、也不必做去重。
+/// 失败原因以中文 `Err` 回传前端（是否落日志由前端决定）；后端刻意不打日志，
+/// 因为本命令只在「光标进出角色」的状态翻转时调用，日志噪声交给前端统一控制。
+#[tauri::command]
+pub fn set_click_through(window: tauri::Window, ignore: bool) -> Result<(), String> {
+    window
+        .set_ignore_cursor_events(ignore)
+        .map_err(|e| format!("设置鼠标穿透失败(ignore={ignore}): {e}"))
 }
