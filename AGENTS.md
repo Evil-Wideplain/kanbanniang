@@ -1,7 +1,7 @@
 ---
 title: 看板娘 — Agent Guide
 created: 2026-10-17
-updated: 2026-10-26
+updated: 2026-10-29
 type: concept
 tags: [project, tauri, live2d, mcp, rust, typescript, ai, dsh-plugin]
 description: Tauri + Live2D 桌面看板娘的 Agent 开发入口：常用命令、项目结构、核心链路、硬性规则与提交前验证；含 DSH 插件装配（Streamable HTTP + 宿主插件）；规范细则见内置 skill。
@@ -10,7 +10,7 @@ sources: [.]
 
 # 看板娘 — Agent Guide
 
-> Tauri + Live2D 桌面看板娘（KanbanNiang），内置 MCP 服务（**Streamable HTTP 主路径 + 旧版 SSE 兼容通道**）：兼容 MCP 的 Agent 可通过工具调用让看板娘做动作、换表情、说话、移动、切换模型。也可直接把 `.zip` 压缩包或模型文件夹拖进窗口导入新模型。
+> Tauri + Live2D 桌面看板娘（KanbanNiang），内置 MCP 服务（**Streamable HTTP 主路径 + 旧版 SSE 兼容通道**）：兼容 MCP 的 Agent 可通过工具调用让看板娘做动作、换表情、说话、移动、切换模型。也可直接把 `.zip` 压缩包或模型文件夹**拖到看板娘身上**导入新模型（空白区域鼠标穿透、不接收拖放）。
 > 本仓库同时是 **DSH 插件包**：安装到 DSH 后，DSH 启动时自动拉起看板娘，并把工具注册为 `mcp__kanbanniang__*`。
 > 本文件只保留开发必需信息；细则通过内置 skill 按需加载（`.agents/skills/`）。子模块细则就近生效：[[src/tauri/AGENTS.md]]、[[src/frontend/AGENTS.md]]、[[src/plugin/AGENTS.md]]。
 
@@ -65,7 +65,7 @@ WebView 前端（src/frontend）── 查询型：mascot:result 回传（onesho
    ▼
 Live2D 控制器 → 看板娘响应
 
-拖入 .zip / 模型文件夹 → Tauri 原生拖放事件 → Rust 解析 *.model3.json 并落盘
+拖到看板娘身上（空白区域鼠标穿透，不接收拖放）→ Tauri 原生拖放事件 → Rust 解析 *.model3.json 并落盘
   → WebView 注册运行时档案（渲染经只读协议 mascot-model://）→ 热切换 + 记住选择
 
 DSH 启动 → src/plugin 宿主插件（读 settings.json 端口 → provide mascotStartup）

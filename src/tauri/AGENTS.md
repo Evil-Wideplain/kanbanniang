@@ -1,7 +1,7 @@
 ---
 title: src/tauri/ — Rust 后端（Tauri 2 + axum MCP 双传输服务）
 created: 2026-10-17
-updated: 2026-10-26
+updated: 2026-10-29
 type: concept
 tags: [rust, tauri, axum, mcp, sse, streamable-http]
 description: Rust 后端执行细则：模块职责与边界、MCP 传输（Streamable HTTP 主路径 + 旧版 SSE 兼容）与 /health、协议版本协商、错误处理、质量门禁（clippy/fmt/cargo-crap）。
@@ -28,7 +28,7 @@ sources: [.]
 | `src/mcp/debug.rs` | 应用内调试面板的 MCP 入口：`debug_call` 自造 JSON-RPC id 复用 `tools::call_tool` 完整协议封套，返回整帧响应 | 只做调试接线；复用真链路但绕过传输层 |
 | `src/state.rs` | 共享状态与事件端口：`mascot:action` 发射、`mascot:result` 等待（5s oneshot） | 跨线程表结构一律经访问器读写；类型与前端 `types.ts` 成对镜像 |
 | `src/config.rs` | 设置持久化：`settings.json` 读写（缺失/损坏回退默认值）+ 端口/不透明度校验 + 内存副本 `SettingsStore` | 只做持久化；字段与前端 `shared/domain/types.ts` 的 `MascotSettings` 成对镜像；DSH 插件从该文件读取 `mcpPort` |
-| `src/commands.rs` | 设置命令（接口层）：`get_settings` / `get_runtime_status`（MCP 实际端口/运行态）/ `save_settings`（MCP 开关与端口变更启停服务、模型变更热切换、窗口置顶/开机自启作用于运行态、不透明度与视线跟随广播 `mascot:settings`）；`apply_startup` 启动时应用运行态偏好；`move_window` 主窗口平滑滑到工作区归一化坐标（600ms smoothstep，`WindowGlideGuard` 代次守卫防并发抢占，供 MCP `move` 工具经前端分发调入）；导入模型命令 `list_imported_models` / `import_models`（阻塞 IO 走 `spawn_blocking`）/ `remember_model`（只改 `modelId` 落盘，避免整份设置并发覆盖） | 只做用例编排；持久化交 `config.rs`、启停交 `mcp::ServiceManager`、窗口交 Tauri 窗口 API、自启交 autostart 插件、模型解析/落盘交 `model_store.rs` |
+| `src/commands.rs` | 设置命令（接口层）：`get_settings` / `get_runtime_status`（MCP 实际端口/运行态）/ `save_settings`（MCP 开关与端口变更启停服务、模型变更热切换、窗口置顶/开机自启作用于运行态、不透明度与视线跟随广播 `mascot:settings`）；`apply_startup` 启动时应用运行态偏好；`move_window` 主窗口平滑滑到工作区归一化坐标（600ms smoothstep，`WindowGlideGuard` 代次守卫防并发抢占，供 MCP `move` 工具经前端分发调入）；导入模型命令 `list_imported_models` / `import_models`（阻塞 IO 走 `spawn_blocking`）/ `remember_model`（只改 `modelId` 落盘，避免整份设置并发覆盖）;`set_click_through` 整窗鼠标穿透开关（前端只在命中结果翻转时调用，`set_ignore_cursor_events` 的薄封装，不影响视觉透明度）；`fit_windows_to_work_area` 启动期低分屏适配（按当前显示器 `work_area()` 只收缩不放大，主窗口 640×800 / 设置窗口 440×760 在 1366×768 上放不下，不收缩会裁掉角色脚部与设置页按钮、并让 `move_window` 纵向范围退化为 0） | 只做用例编排；持久化交 `config.rs`、启停交 `mcp::ServiceManager`、窗口交 Tauri 窗口 API、自启交 autostart 插件、模型解析/落盘交 `model_store.rs` |
 | `src/model_store.rs` | 导入模型仓库（基础设施层）：扫描/解析 `*.model3.json`（`FileReferences` 的 moc/贴图/动作组/表情）、校验引用路径合法与必需文件存在、zip 解压（防解压炸弹与路径穿越，按实际字节计数）、临时目录暂存 → 旧目录挪 `.trash` → 新目录上位（失败回滚）落盘到 `<app_data_dir>/models/imported-*/`、仅同名模型覆盖（撞 slug 的不同名让位 `-2`）、进程级串行导入 + 残留临时目录清理、`list()` 回读（容错单条目，meta 记录主配置文件名）、只读协议 `mascot-model://<id>/<相对路径>` 的请求处理（含 CORS 头与目录越界二次校验） | 只做解析/落盘/只读服务；不碰设置与窗口，命令编排在 `commands.rs` |
 | `src/debug.rs` | 应用内 MCP 调试面板：命令 `mcp_debug_call`（始终注册）复用 `mcp::debug_call` 工具路由；`create_window` 仅在 `debug_assertions` 下创建 `debug.html` 窗口 | 只做调试接线；窗口创建仅开发构建，release 无该窗口故命令不可触达 |
 | `src/log_setup.rs` | 日志装配：`tauri-plugin-log` 配置（级别/滚动/targets/落盘位置/行格式）与注册入口 `plugin()`；`file_dir()` 暴露实际落盘目录给启动日志 | 只做装配；落盘位置优先 exe 同目录、不可写回退 LogDir；禁止绕过 `log` 门面写日志 |
@@ -53,6 +53,8 @@ GET /health ──▶ {"ok":true,"service":"kanbanniang","transport":[...],...}�
 `initialize` 的 `protocolVersion` **按客户端请求回显**：取 `params.protocolVersion`，命中 `SUPPORTED_PROTOCOL_VERSIONS`（`2024-11-05` / `2025-03-26` / `2025-06-18`）则原样返回，否则回退 `FALLBACK_PROTOCOL_VERSION`（当前 `2025-06-18`）。不要改回硬编码——两条传输分属不同规范版本，写死任一版本都会对另一条自相矛盾。其余：`capabilities.tools.listChanged: true`、`serverInfo`（name + `env!("CARGO_PKG_VERSION")`）。Streamable HTTP 为无状态实现：会话头只在 initialize 下发、不校验归属；`GET /mcp` 按协议回 405（客户端视为不支持服务端推送）。
 
 ### 常驻托盘与窗口行为
+
+窗口尺寸：`tauri.conf.json` 按设计尺寸创建（主窗口 640×800、设置窗口 440×760，`resizable: false` 且不再设 `minWidth/minHeight`——设了会挡住程序化收缩），`lib.rs` 的 setup 在 `apply_startup` 之后调用 `commands::fit_windows_to_work_area` 按工作区收缩并重新居中；前端布局按视口摆放，收缩只减少留白，角色像素尺寸与气泡位置自动跟随。
 
 应用常驻系统托盘：`tray.rs::init()` 装配托盘图标与右键菜单（显示/隐藏、退出），左键切换显隐；`lib.rs` 拦截 `CloseRequested` 转为隐藏，故关窗不结束进程，唯一退出入口是托盘菜单。托盘依赖 `tauri` 的 `tray-icon` feature。
 
