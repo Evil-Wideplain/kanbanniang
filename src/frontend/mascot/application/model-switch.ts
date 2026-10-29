@@ -19,6 +19,10 @@ export interface ModelManager {
   setGaze(enabled: boolean): void;
   /** 注入台词出口：作用于当前控制器并记住，热切换后自动挂到新控制器上。 */
   setSpeechSink(sink: (text: string) => void): void;
+  /** 注入鼠标穿透出口：作用于当前控制器并记住，热切换后自动挂到新控制器上。 */
+  setClickThroughSink(sink: (ignore: boolean) => void): void;
+  /** 注入气泡底边出口：作用于当前控制器并记住，热切换后自动挂到新控制器上。 */
+  setBubbleBottomSink(sink: (bottomPx: number) => void): void;
 }
 
 /** 按档案创建 Live2D 控制器。失败向上抛。 */
@@ -42,6 +46,10 @@ export async function createModelManager(
   let gazeEnabled = initialGaze;
   /** 台词出口（气泡回调）：记住并在每次热切换后重新挂到新控制器。 */
   let speechSink: ((text: string) => void) | null = null;
+  /** 鼠标穿透出口：同样随热切换重新挂到新控制器。 */
+  let clickThroughSink: ((ignore: boolean) => void) | null = null;
+  /** 气泡底边出口：同样随热切换重新挂到新控制器。 */
+  let bubbleBottomSink: ((bottomPx: number) => void) | null = null;
 
   // 1) 按初始档案初始化控制器（未知/空 id 回退默认档案）
   const profile = getProfile(initialModelId) ?? getProfile(DEFAULT_MODEL_ID);
@@ -121,9 +129,11 @@ export async function createModelManager(
       oldCanvas.replaceWith(newCanvas);
       controller = next;
       currentModelId = target.id;
-      // 新控制器沿用当前视线跟随设置与台词出口
+      // 新控制器沿用当前视线跟随设置、台词出口、鼠标穿透出口与气泡底边出口
       next.setGaze(gazeEnabled);
       if (speechSink) next.setSpeechSink(speechSink);
+      if (clickThroughSink) next.setClickThroughSink(clickThroughSink);
+      if (bubbleBottomSink) next.setBubbleBottomSink(bubbleBottomSink);
       (window as any).__mascot = controller;
       console.info("[mascot] 模型切换完成", {
         from,
@@ -152,6 +162,14 @@ export async function createModelManager(
     setSpeechSink: (sink: (text: string) => void) => {
       speechSink = sink;
       controller?.setSpeechSink(sink);
+    },
+    setClickThroughSink: (sink: (ignore: boolean) => void) => {
+      clickThroughSink = sink;
+      controller?.setClickThroughSink(sink);
+    },
+    setBubbleBottomSink: (sink: (bottomPx: number) => void) => {
+      bubbleBottomSink = sink;
+      controller?.setBubbleBottomSink(sink);
     },
   };
 }

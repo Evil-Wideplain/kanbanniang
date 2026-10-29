@@ -5,8 +5,8 @@
  * （见 motion-queue.test.ts），不需要 pixi / DOM。
  */
 import type { ActionOutcome } from "@/shared/domain/types";
-import { PLAY_MOTION_STEP_WAIT_MS } from "@/shared/domain/motion-limits";
 import type { PlannedMotionStep } from "./motion-catalog";
+import { MotionWaits } from "./motion-waits";
 
 /** 计时器抽象：生产环境传 window，单测注入假实现。 */
 export interface QueueScheduler {
@@ -61,14 +61,16 @@ export class MotionQueue {
   private token = 0;
   /** 队列状态：idle 无队列；internal 内部单步（点击/说话/待机）；external MCP play_motion。 */
   private state: "idle" | "internal" | "external" = "idle";
-  private readonly timers = new Set<number>();
-  private readonly waits = new Set<(ok: boolean) => void>();
+  /** 等待簿记（计时器 + 挂起回调）：打断时一次性清理并放行。 */
+  private readonly waits: MotionWaits;
 
   /** 构造队列：port 提供播放能力，scheduler 提供可清理的计时器。 */
   constructor(
     private readonly port: MotionQueuePort,
-    private readonly scheduler: QueueScheduler,
-  ) {}
+    scheduler: QueueScheduler,
+  ) {
+    this.waits = new MotionWaits(scheduler, (token) => this.alive(token), port);
+  }
 
   /** 队列是否在播（含内部单步：点击反应 / 说话手势 / 待机）。 */
   isActive(): boolean {
@@ -145,10 +147,10 @@ export class MotionQueue {
         continue;
       }
       // started / already-playing 都要等这一步真正播完（后者正是库里正在播的目标动画）
-      if (!(await this.waitMotionEnd(token, group, index))) return;
+      if (!(await this.waits.waitMotionEnd(token, group, index))) return;
       if (!this.alive(token)) return;
       if (step.holdMs !== undefined && step.holdMs > 0) {
-        if (!(await this.waitMs(token, step.holdMs))) return;
+        if (!(await this.waits.wait(token, step.holdMs))) return;
       }
     }
     if (!this.alive(token)) return;
@@ -170,69 +172,6 @@ export class MotionQueue {
   private cleanup(notify: boolean): void {
     this.token += 1;
     this.state = "idle";
-    for (const id of this.timers) this.scheduler.clearTimeout(id);
-    this.timers.clear();
-    const waits = [...this.waits];
-    this.waits.clear();
-    if (notify) for (const done of waits) done(false);
-  }
-
-  /** 可被打断的固定等待：false 表示等待期间队列被打断或控制器已销毁。 */
-  private waitMs(token: number, ms: number): Promise<boolean> {
-    return new Promise<boolean>((resolve) => {
-      let id = 0;
-      const done = (ok: boolean): void => {
-        this.scheduler.clearTimeout(id);
-        this.timers.delete(id);
-        this.waits.delete(done);
-        resolve(ok && this.alive(token));
-      };
-      this.waits.add(done);
-      id = this.scheduler.setTimeout(() => {
-        this.timers.delete(id);
-        done(true);
-      }, ms);
-      this.timers.add(id);
-    });
-  }
-
-  /**
-   * 等一步动作真正播完。
-   * 用库的 `motionFinish` 事件（MotionManager 在动作结束时发出）而不是轮询状态：
-   * `model.motion()` 是异步的，调用后立刻读状态会读不到本步，误判成「已播完」。
-   * 上限只作兜底：个别模型/异常路径不触发该事件时按上限放行，避免队列永久卡住。
-   */
-  private waitMotionEnd(token: number, group: string, index: number): Promise<boolean> {
-    return new Promise<boolean>((resolve) => {
-      let settled = false;
-      let capId = 0;
-      let off = (): void => {};
-      const done = (ok: boolean): void => {
-        if (settled) return;
-        settled = true;
-        off();
-        this.scheduler.clearTimeout(capId);
-        this.timers.delete(capId);
-        this.waits.delete(done);
-        resolve(ok && this.alive(token));
-      };
-      this.waits.add(done);
-      off = this.port.onMotionFinish(() => done(true));
-      // 监听挂上时动作可能已经结束（极短动作）：补一次状态检查
-      if (!this.port.isMotionPlaying()) {
-        done(true);
-        return;
-      }
-      capId = this.scheduler.setTimeout(() => {
-        if (settled) return;
-        console.warn("[mascot] 连续动作等待动作结束超时，按兜底放行", {
-          group,
-          index,
-          capMs: PLAY_MOTION_STEP_WAIT_MS,
-        });
-        done(true);
-      }, PLAY_MOTION_STEP_WAIT_MS);
-      this.timers.add(capId);
-    });
+    this.waits.cleanup(notify);
   }
 }

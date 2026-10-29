@@ -12,7 +12,7 @@ import { connectTauriEvents } from "@/shared/ipc/events";
 import { installLogForwarding } from "@/shared/ipc/log-forward";
 import { loadImportedProfiles } from "@/shared/ipc/model-import";
 import { loadSettings, onSettingsChanged } from "@/shared/ipc/settings-client";
-import { moveWindow } from "@/shared/ipc/window";
+import { moveWindow, setClickThrough } from "@/shared/ipc/window";
 
 /**
  * 应用看板娘不透明度：写到 CSS 变量 `--mascot-opacity`，由 `#stage` 引用。
@@ -21,6 +21,14 @@ import { moveWindow } from "@/shared/ipc/window";
 function applyOpacity(percent: number): void {
   const clamped = Math.min(100, Math.max(0, percent));
   document.documentElement.style.setProperty("--mascot-opacity", String(clamped / 100));
+}
+
+/**
+ * 气泡底边距：渲染层在每次布局后算出「距窗口底部的距离」（跟着实际模型高度与锚点走），
+ * 这里只负责写进 CSS 变量 —— 气泡因此贴在角色头顶而不是窗口顶部/底部。
+ */
+function applyBubbleBottom(bottomPx: number): void {
+  document.documentElement.style.setProperty("--bubble-bottom", `${bottomPx}px`);
 }
 
 async function bootstrap() {
@@ -41,6 +49,15 @@ async function bootstrap() {
   const mgr = await createModelManager(initialCanvas, settings.modelId, settings.gazeFollow);
   // 台词出口：动作序列里每步的 text 也走同一个气泡（热切换后自动沿用）
   mgr.setSpeechSink((text) => bubble.show(text));
+  // 气泡底边出口：布局每次变化（窗口缩放/锚点/换模型）都会回调，写进 CSS 变量即可
+  mgr.setBubbleBottomSink(applyBubbleBottom);
+  // 鼠标穿透出口：渲染层按「光标是否在角色像素上」算出 ignore，这里执行整窗开关。
+  // 非 Tauri 环境（浏览器调试）命令不存在：失败仅告警，不影响其他功能。
+  mgr.setClickThroughSink((ignore) => {
+    void setClickThrough(ignore).catch((e: unknown) => {
+      console.warn("[mascot] 设置鼠标穿透失败:", e);
+    });
+  });
 
   // 4) 指令上下文（模型切换、窗口移动注入 dispatcher；气泡唯一出口是控制器的 speechSink）
   const ctx: CommandCtx = {

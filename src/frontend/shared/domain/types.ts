@@ -202,6 +202,17 @@ export interface MascotController {
   speak(text: string): void;
   /** 注入台词出口（气泡显示），由组合根接线，渲染层不直接操作 DOM。 */
   setSpeechSink(sink: (text: string) => void): void;
+  /**
+   * 注入鼠标穿透出口：渲染层按光标是否落在角色像素上算出 `ignore`，交给组合根执行
+   * （整窗穿透开关）。非 Tauri 环境下组合根可传空实现，渲染层不关心实现细节。
+   */
+  setClickThroughSink(sink: (ignore: boolean) => void): void;
+  /**
+   * 注入气泡底边出口：渲染层按「视口高度 − 脚底基线 + 实际模型高度 + 间隙」算出
+   * 气泡底边距窗口底部的距离（CSS 像素），交给组合根写进 CSS 变量。
+   * 布局每次变化（窗口缩放 / 锚点变化 / 换模型）都会回调，气泡因此始终贴在角色头顶。
+   */
+  setBubbleBottomSink(sink: (bottomPx: number) => void): void;
   /** 移动到归一化坐标（x,y ∈ [0,1]，相对窗口）。 */
   moveTo(x: number, y: number): void;
   /** 回到待机。 */

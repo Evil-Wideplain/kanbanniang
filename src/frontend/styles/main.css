@@ -31,7 +31,11 @@ body {
 .bubble {
   position: fixed;
   left: 50%;
-  top: 8%;
+  /* 气泡贴角色头顶：底边距由渲染层每次布局算出（layout.ts::bubbleBottomPx，
+     跟随视口高度/锚点/实际模型高度），组合根经 --bubble-bottom 写入。
+     缺省 100% 让气泡落在窗口上方之外（不可见），而不是停在错误位置。 */
+  top: auto;
+  bottom: var(--bubble-bottom, 100%);
   transform: translateX(-50%);
   max-width: 80%;
   padding: 8px 14px;
