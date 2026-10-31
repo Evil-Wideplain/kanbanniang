@@ -77,20 +77,25 @@ impl SettingsStore {
     }
 }
 
-/// 校验端口合法性：仅拒绝 0（操作系统会分配随机端口，与「固定端口」语义冲突）。
-pub fn validate_port(port: u16) -> anyhow::Result<()> {
-    if port == 0 {
-        anyhow::bail!("端口不能为 0");
+/// 收敛越界设置值：端口 0 回退默认端口，不透明度不在 1~100 回退 100。
+/// 返回是否发生了修正（供调用方决定是否落告警日志）。
+///
+/// 为什么只收敛、不做校验报错：取值规则的用户可见报错归前端
+/// （`shared/domain/settings.ts` 的 `validatePort` / `validateOpacity`，设置页据此就地提示），
+/// 后端再存一份同样的规则与中文错误码就是双份真相。但「读盘」与「IPC 入参」两条入口
+/// 都必须收敛——否则非法值会原样落盘（端口 0 会让操作系统每次分配随机端口，
+/// 与「固定端口」语义冲突；不透明度 0 会让看板娘完全不可见）。
+pub fn normalize(settings: &mut Settings) -> bool {
+    let mut changed = false;
+    if settings.mcp_port == 0 {
+        settings.mcp_port = DEFAULT_MCP_PORT;
+        changed = true;
     }
-    Ok(())
-}
-
-/// 校验不透明度合法性：1~100 的百分数（0 会让看板娘完全不可见，故下限为 1）。
-pub fn validate_opacity(opacity: u8) -> anyhow::Result<()> {
-    if opacity == 0 || opacity > 100 {
-        anyhow::bail!("不透明度需为 1~100");
+    if settings.opacity == 0 || settings.opacity > 100 {
+        settings.opacity = 100;
+        changed = true;
     }
-    Ok(())
+    changed
 }
 
 /// 把设置写入磁盘（自动创建配置目录）。
@@ -109,7 +114,7 @@ fn ensure_parent_dir(path: &std::path::Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// 读取磁盘设置：文件不存在属首次运行的正常路径；内容损坏或端口非法则告警并回退。
+/// 读取磁盘设置：文件不存在属首次运行的正常路径；内容损坏或字段越界则告警并回退。
 fn read_settings(app: &AppHandle) -> Settings {
     let Some(path) = settings_path(app) else {
         return Settings::default();
@@ -119,19 +124,12 @@ fn read_settings(app: &AppHandle) -> Settings {
     };
     match serde_json::from_str::<Settings>(&text) {
         Ok(mut settings) => {
-            if validate_port(settings.mcp_port).is_err() {
+            if normalize(&mut settings) {
                 log::warn!(
-                    "[settings] 配置端口非法（{}），回退默认端口",
-                    settings.mcp_port
-                );
-                settings.mcp_port = DEFAULT_MCP_PORT;
-            }
-            if validate_opacity(settings.opacity).is_err() {
-                log::warn!(
-                    "[settings] 配置不透明度非法（{}），回退默认值",
+                    "[settings] 配置含越界值，已收敛（端口 {}，不透明度 {}）",
+                    settings.mcp_port,
                     settings.opacity
                 );
-                settings.opacity = 100;
             }
             settings
         }
@@ -161,19 +159,33 @@ mod tests {
     use super::*;
 
     #[test]
-    fn validate_port_rejects_zero_only() {
-        assert!(validate_port(0).is_err());
-        assert!(validate_port(1).is_ok());
-        assert!(validate_port(DEFAULT_MCP_PORT).is_ok());
-        assert!(validate_port(u16::MAX).is_ok());
+    fn normalize_converges_invalid_port() {
+        let mut settings = Settings {
+            mcp_port: 0,
+            ..Settings::default()
+        };
+        assert!(normalize(&mut settings));
+        assert_eq!(settings.mcp_port, DEFAULT_MCP_PORT);
+        for port in [1, DEFAULT_MCP_PORT, u16::MAX] {
+            settings.mcp_port = port;
+            assert!(!normalize(&mut settings), "合法端口不应被修正: {port}");
+            assert_eq!(settings.mcp_port, port);
+        }
     }
 
     #[test]
-    fn validate_opacity_bounds_are_1_to_100() {
-        assert!(validate_opacity(0).is_err());
-        assert!(validate_opacity(1).is_ok());
-        assert!(validate_opacity(100).is_ok());
-        assert!(validate_opacity(101).is_err());
+    fn normalize_opacity_bounds_are_1_to_100() {
+        let mut settings = Settings::default();
+        for (input, expected) in [(0u8, 100u8), (1, 1), (100, 100), (101, 100), (u8::MAX, 100)] {
+            settings.opacity = input;
+            let changed = normalize(&mut settings);
+            assert_eq!(settings.opacity, expected, "不透明度 {input}");
+            assert_eq!(
+                changed,
+                input != expected,
+                "修正标记与是否越界不一致: {input}"
+            );
+        }
     }
 
     #[test]

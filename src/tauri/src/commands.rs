@@ -77,10 +77,16 @@ pub async fn save_settings(
     settings: Settings,
 ) -> Result<Settings, String> {
     let current = store.get();
-    config::validate_port(settings.mcp_port).map_err(|e| e.to_string())?;
-    config::validate_opacity(settings.opacity).map_err(|e| e.to_string())?;
+    // 越界值收敛到默认（取值规则的用户可见报错归前端设置页），避免非法端口/不透明度落盘。
+    let mut next = settings;
+    if config::normalize(&mut next) {
+        log::warn!(
+            "[settings] 保存入参越界，已收敛（端口 {}，不透明度 {}）",
+            next.mcp_port,
+            next.opacity
+        );
+    }
 
-    let next = settings;
     config::save(&app, &next).map_err(|e| {
         log::error!("[settings] 设置落盘失败: {e}");
         format!("保存设置失败: {e}")
