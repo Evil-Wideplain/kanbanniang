@@ -2,12 +2,23 @@
 
 **Tauri 2 + Live2D 桌面看板娘，内置 MCP 服务（Streamable HTTP）。** Agent 通过 11 个 MCP 工具操作她的动作、表情、台词、窗口位置与模型；本仓库同时是一个 **DSH 插件包**，安装后 DSH 启动时自动拉起看板娘，并把工具注入为 `mcp__kanbanniang__*`。
 
+*In English: a Tauri 2 + Live2D desktop mascot with a built-in MCP server (11 tools, Streamable HTTP). It is also packaged as a DSH (DeepSeek Harness) plugin: DSH auto-launches the mascot and exposes `mcp__kanbanniang__*` tools to any MCP client.*
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![CI](https://github.com/Evil-Wideplain/kanbanniang/actions/workflows/ci.yml/badge.svg)](https://github.com/Evil-Wideplain/kanbanniang/actions/workflows/ci.yml)
 ![Tauri 2](https://img.shields.io/badge/Tauri-2-lightgrey.svg)
 ![Node >=18](https://img.shields.io/badge/Node-%E2%89%A518-339933.svg)
 ![MCP Streamable HTTP](https://img.shields.io/badge/MCP-Streamable%20HTTP-purple.svg)
 ![DSH plugin](https://img.shields.io/badge/DSH-plugin-blueviolet.svg)
+
+**给其他人的一键安装（DSH 插件）**
+
+```bash
+git clone https://github.com/Evil-Wideplain/kanbanniang.git && cd kanbanniang && npm install && npm run plugin:install
+```
+
+> 前置：DSH 桌面端 0.2.x、Node 18+、Rust 工具链已就绪。该命令会构建应用、编译宿主插件并注册到 DSH desktop profile；手动步骤与验证见下文「快速开始」与「作为 DSH 插件安装」。
+
 
 ## 特性
 
