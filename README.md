@@ -3,6 +3,7 @@
 **Tauri 2 + Live2D 桌面看板娘，内置 MCP 服务（Streamable HTTP）。** Agent 通过 11 个 MCP 工具操作她的动作、表情、台词、窗口位置与模型；本仓库同时是一个 **DSH 插件包**，安装后 DSH 启动时自动拉起看板娘，并把工具注入为 `mcp__kanbanniang__*`。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![CI](https://github.com/Evil-Wideplain/kanbanniang/actions/workflows/ci.yml/badge.svg)](https://github.com/Evil-Wideplain/kanbanniang/actions/workflows/ci.yml)
 ![Tauri 2](https://img.shields.io/badge/Tauri-2-lightgrey.svg)
 ![Node >=18](https://img.shields.io/badge/Node-%E2%89%A518-339933.svg)
 ![MCP Streamable HTTP](https://img.shields.io/badge/MCP-Streamable%20HTTP-purple.svg)
