@@ -1,6 +1,6 @@
 # 看板娘 KanbanNiang · Tauri + Live2D + 内置 MCP 服务
 
-一个**桌面看板娘**：用 [Tauri](https://tauri.app/) 做窗口外壳，用 [Live2D Cubism](https://www.live2d.com/) 做角色渲染，并在应用内**直接提供一个 MCP（Model Context Protocol）服务**（同时支持旧版 SSE 与 Streamable HTTP）。任何兼容 MCP 的 Agent（**DSH**、Claude Desktop、自定义脚本等）都能连上来，调用工具让看板娘**做动作、换表情、说话、移动、查询状态**。
+一个**桌面看板娘**：用 [Tauri](https://tauri.app/) 做窗口外壳，用 [Live2D Cubism](https://www.live2d.com/) 做角色渲染，并在应用内**直接提供一个 MCP（Model Context Protocol）服务**（Streamable HTTP 传输）。任何兼容 MCP 的 Agent（**DSH**、Claude Desktop、自定义脚本等）都能连上来，调用工具让看板娘**做动作、换表情、说话、移动、查询状态**。
 
 > 核心价值：**看板娘即工具（tool）**。Agent 不需要理解 Live2D，只要调用 `play_motion` / `speak` / `set_expression` 等 MCP 工具，桌面上的看板娘就会动起来。
 >
@@ -15,11 +15,11 @@
 │  DSH（插件系统 + MCP 客户端） │   │  Claude Desktop / Inspector 等  │
 │  mcp__kanbanniang__* 工具     │   │  任意 MCP 客户端                 │
 └──────────────┬───────────────┘   └───────────────┬────────────────┘
-               │ Streamable HTTP                    │ Streamable HTTP / 旧版 SSE
+               │ Streamable HTTP                    │ Streamable HTTP
                ▼                                    ▼
         ┌──────────────────────────────────────────────────────────┐
         │  看板娘 Tauri 进程（Rust，127.0.0.1:7432）                │
-        │  axum：POST /mcp · GET /mcp/sse · /health                 │
+        │  axum：POST /mcp · /health（单一 Streamable HTTP 传输）     │
         │  MCP 服务 → JSON-RPC 路由 → 工具清单（src/mcp/tools.json） │
         └───────────────────────────┬──────────────────────────────┘
                                     │ Tauri 事件 mascot:action
@@ -31,10 +31,9 @@
         └──────────────────────────────────────────────────────────┘
 ```
 
-- **双传输**：同一端口同时提供 MCP **Streamable HTTP**（`POST http://127.0.0.1:7432/mcp`，
-  **主路径**，DSH 及所有现代客户端走这条）与旧版 **SSE**（`http://127.0.0.1:7432/mcp/sse`，
-  MCP `2024-11-05` 的传输，自 `2025-03-26` 起已被 Streamable HTTP 取代并废弃，仅兼容老客户端）；
-  `/health` 供插件探活。两条路径共用同一套 JSON-RPC 与工具实现。
+- **单传输**：内置 MCP **Streamable HTTP** 服务（`POST http://127.0.0.1:7432/mcp`，自
+  `2025-03-26` 起取代旧版 HTTP+SSE 传输，DSH / Claude Desktop 等现代客户端走这条；旧版
+  `2024-11-05` 的 `/mcp/sse` 端点已下线）；`/health` 供插件探活。
 - **动作链路**：Agent 调用工具 → axum 收到 `tools/call` → 通过 Tauri 事件 `mascot:action` 通知前端 → 前端驱动 Live2D 看板娘执行。
 - **查询链路**：`list_motions` / `list_expressions` / `get_status` / `set_model` / `list_models` 这类查询型工具，前端执行后通过 `mascot:result` 事件把结果回传，Rust 端用 oneshot 通道等结果（超时 5s）。
 - **导入链路**：把 `.zip` 压缩包或模型文件夹**拖到看板娘身上**（空白区域鼠标穿透、不接收拖放）→ Rust 解析 `*.model3.json` 并落盘到应用数据目录 → 前端注册运行时档案并热切换；模型资源经只读协议 `mascot-model://` 提供给 WebView（Windows 上是 `http://mascot-model.localhost/...`）。
@@ -44,7 +43,7 @@
 
 ## 特性
 
-- ✅ 内置 MCP 服务：**Streamable HTTP + SSE 双传输**，Agent 即连即用
+- ✅ 内置 MCP 服务：**Streamable HTTP 单端点**，Agent 即连即用
 - ✅ **可作为 DSH 插件安装**：DSH 启动自动拉起看板娘，工具以 `mcp__kanbanniang__*` 注入会话
 - ✅ 11 个工具：动作 / 表情 / 说话 / **窗口移动**（平滑滑行）/ 窗口内站位 / 待机 / 列动作 / 列表情 / 查状态 / **运行时换模型** / 列模型
 - ✅ Live2D Cubism 3–5.3 模型即插即用：放入 `models/` 后自动发现并登记
@@ -80,11 +79,10 @@ npm install
 npm run tauri:dev
 
 # 4. 另开一个终端，验证 MCP 工具链路（需应用已启动）
-node cmd/client/test.mjs            # 旧版 SSE 传输
-node cmd/client/test-streamable.mjs # Streamable HTTP 传输（DSH 同款协议）
+node cmd/client/test-streamable.mjs # MCP 冒烟测试（Streamable HTTP，DSH 同款协议）
 ```
 
-启动后可看到桌面角落出现一个透明置顶的看板娘；两个冒烟脚本会依次调用
+启动后可看到桌面角落出现一个透明置顶的看板娘；该脚本会依次调用
 `initialize → tools/list → speak → get_status → list_motions → play_motion → set_expression`，
 你应该能看到看板娘做出对应反应，且脚本打印出返回结果。
 
@@ -168,8 +166,8 @@ npm run plugin:uninstall   # dsh plugin --profile desktop remove kanbanniang
 
 ## 让 Agent 接入（MCP 客户端配置）
 
-> **端点：`http://127.0.0.1:7432/mcp`（Streamable HTTP，主路径）**。只有当客户端**只实现旧版
-> SSE 传输、不会回退新版**时，才改用 `http://127.0.0.1:7432/mcp/sse`。端口可在设置页修改。
+> **端点：`http://127.0.0.1:7432/mcp`（Streamable HTTP，唯一传输）**。端口可在设置页修改；
+> 旧版 HTTP+SSE（`2024-11-05`）端点已下线，客户端需支持 Streamable HTTP。
 
 ### DSH
 
@@ -192,8 +190,8 @@ npm run plugin:uninstall   # dsh plugin --profile desktop remove kanbanniang
 重启客户端，确认「kanbanniang」已连接。之后你可以直接说：
 "让看板娘挥手并说『欢迎回来～』"，它就会调用 `play_motion` + `speak`。
 
-若客户端版本较老、只认旧版 SSE（`2024-11-05`）传输，把 `url` 换成
-`http://127.0.0.1:7432/mcp/sse` 即可——功能完全一致，只是换了条通道。
+若客户端只支持旧版 HTTP+SSE（`2024-11-05`）传输，请先升级到支持 Streamable HTTP 的版本
+（Claude Desktop / DSH 等均已支持）；本服务不再提供 `/mcp/sse` 端点。
 
 也可用官方 [`@modelcontextprotocol/inspector`](https://github.com/modelcontextprotocol/inspector) 可视化调试。
 
@@ -259,10 +257,9 @@ pet/
 │  └─ tauri/               Rust 后端（cargo 包根）
 │     ├─ Cargo.toml
 │     ├─ src/lib.rs        Tauri 入口 + 启动 MCP 服务
-│     ├─ src/mcp/mod.rs    MCP 模块根（双传输常量与文档）
-│     ├─ src/mcp/server.rs 服务生命周期 + 路由装配（/mcp · /mcp/sse · /health）
-│     ├─ src/mcp/streamable.rs Streamable HTTP 传输（主路径，DSH 使用）
-│     ├─ src/mcp/sse.rs    旧版 SSE 传输与会话（仅兼容老客户端）
+│     ├─ src/mcp/mod.rs    MCP 模块根（常量与文档）
+│     ├─ src/mcp/server.rs 服务生命周期 + 路由装配（/mcp · /health）
+│     ├─ src/mcp/streamable.rs Streamable HTTP 传输（唯一传输）
 │     ├─ src/mcp/rpc.rs    JSON-RPC 方法路由与封套
 │     ├─ src/mcp/tools.rs  工具清单加载 + tools/call 分发（读 src/mcp/tools.json）
 │     ├─ src/state.rs      共享状态 + 事件发射 + 结果回传（查询型 5s oneshot）
@@ -276,9 +273,8 @@ pet/
 ├─ models/                 静态资源根（Vite publicDir）：模型目录 + 接入文档
 ├─ cmd/
 │  └─ client/
-│     ├─ client.mjs        共享 SSE/RPC 客户端（pending + 消息队列）
-│     ├─ test.mjs          SSE 冒烟测试：完整调用一遍工具
-│     ├─ test-streamable.mjs Streamable HTTP 冒烟测试（零依赖）
+│     ├─ client.mjs        共享 MCP 客户端（Streamable HTTP，逐条 POST）
+│     ├─ test-streamable.mjs MCP 冒烟测试：完整调用一遍工具（零依赖）
 │     └─ preview.mjs       动作/表情逐个预览并命名（生成语义别名用）
 └─ README.md
 ```

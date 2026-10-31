@@ -53,23 +53,27 @@ cd src/tauri && cargo crap --lcov lcov.info
 
 退出码：`0` 正常；`1` 触发了 `--fail-above` / `--fail-regression`；`2` 运行失败（用法/输入/分析错误）。
 
-## 当前基线（2026-10-17，第二轮热点拆分后）
+## 当前基线（2026-10-29 重跑：下线旧版 SSE 传输与 `move_window` 后）
 
-74 个函数，0 个超阈值 30（实测 `cargo crap --summary`）。最高档为 CRAP 30（CC 5）：
+132 个函数，17 个超阈值 30（实测 `cargo crap --min 20 --format markdown`）。热点集中在模型导入仓库（`model_store.rs`；导入功能落地后一直没重跑基线，故与更早记录的「0 超阈值」差异很大）：
 
 | 函数 | CRAP | CC | 位置 |
 |------|------|-----|------|
-| `save_settings` | 30 | 5 | `src/tauri/src/commands.rs` |
-| `reconcile_mcp` | 30 | 5 | `src/tauri/src/commands.rs` |
-| `apply_autostart` | 30 | 5 | `src/tauri/src/commands.rs` |
-| `config::save` | 30 | 5 | `src/tauri/src/config.rs` |
-| `read_settings` | 30 | 5 | `src/tauri/src/config.rs` |
-| `rpc_result` | 30 | 5 | `src/tauri/src/mcp/rpc.rs` |
-| `on_menu_event` | 30 | 5 | `src/tauri/src/tray.rs` |
+| `extract_zip` | 240 | 15 | `src/tauri/src/model_store.rs` |
+| `install_model` | 156 | 12 | `src/tauri/src/model_store.rs` |
+| `slug` / `content_type` | 132 | 11 | `src/tauri/src/model_store.rs` |
+| `list` / `collect_references` / `copy_tree_inner` / `serve_file` | 110 | 10 | `src/tauri/src/model_store.rs` |
+| `shrink_to_work_area` | 110 | 10 | `src/tauri/src/commands.rs` |
+| `walk_configs` | 90 | 9 | `src/tauri/src/model_store.rs` |
+| `import_from_dir` / `load_imported` | 72 | 8 | `src/tauri/src/model_store.rs` |
+| `import` / `walk_files` / `copy_limited` | 56 | 7 | `src/tauri/src/model_store.rs` |
+| `post_handler`（Streamable HTTP 入口） | 56 | 7 | `src/tauri/src/mcp/streamable.rs` |
+| `verify_referenced_files` | 42 | 6 | `src/tauri/src/model_store.rs` |
 
-第二档 CRAP 20（CC 4）：`switch_model_if_changed`、`respond_sync`、`post_handler`、`AppStateInner::await_result`、`build_menu`、`toggle_window`。
+第二档 CRAP 30（CC 5）：`reconcile_mcp`、`apply_autostart`、`config::save`、`rpc_result`、`parse_config`、`ensure_safe_reference`、`is_valid_id`。
+第三档 CRAP 20（CC 4）：`save_settings`、`switch_model_if_changed`、`config::normalize`、`read_settings`、`respond_sync`、`import_one`、`is_junk_entry`、`allocate_id`、`remove_stale_dirs`、`AppStateInner::await_result`。
 
-两轮改进（同一批热点，第一轮 → 第二轮）：
+两轮改进（同一批热点，第一轮 → 第二轮；`save_settings` / `read_settings` 后来因下线重复校验进一步降到 20）：
 
 | 函数 | CRAP | CC | 拆分手法 |
 |------|------|-----|----------|
@@ -85,7 +89,7 @@ cd src/tauri && cargo crap --lcov lcov.info
 
 剩余 CRAP 30 一档的分支多为其语义本身（协议分发 / 校验 / 平台 API 读写），继续拆收益递减；真正的降分杠杆是补测试（cov 上升）。
 
-已补 Rust 单测（`config.rs` 校验/默认值、`mcp/rpc.rs` 路由/封套、`mcp/sse.rs` 请求解析、`mcp/tools.rs` 清单投影，`cargo test --lib`），但尚未接入覆盖率：本机仍缺 `cargo llvm-cov` 所需的插桩测试链路，`--lcov` 暂无法本地产出。注意此前「测试 exe 链接失败」的说法已不成立——那是**运行时缺应用清单**（`comctl32!TaskDialogIndirect` 属 v6 导出，测试目标未链接 `tauri-build` 生成的 Windows 资源，加载期即 `0xC0000139`），已由 `src/tauri/build.rs::link_windows_resource_to_tests` 修复，`cargo test --lib` 现在可直接跑。接入覆盖率后 `cargo llvm-cov --lcov --output-path lcov.info` + `cargo crap --lcov lcov.info` 可让分数显著下降。
+已补 Rust 单测（`config.rs` 校验/默认值、`mcp/rpc.rs` 路由/封套、`mcp/streamable.rs` 请求/响应封套、`mcp/tools.rs` 清单投影，`cargo test --lib`），但尚未接入覆盖率：本机仍缺 `cargo llvm-cov` 所需的插桩测试链路，`--lcov` 暂无法本地产出。注意此前「测试 exe 链接失败」的说法已不成立——那是**运行时缺应用清单**（`comctl32!TaskDialogIndirect` 属 v6 导出，测试目标未链接 `tauri-build` 生成的 Windows 资源，加载期即 `0xC0000139`），已由 `src/tauri/build.rs::link_windows_resource_to_tests` 修复，`cargo test --lib` 现在可直接跑。接入覆盖率后 `cargo llvm-cov --lcov --output-path lcov.info` + `cargo crap --lcov lcov.info` 可让分数显著下降。
 
 重构这些热点时以「分数不继续上升」为约束；重构后重跑 `make score`，把新基线同步到本文件与 `src/tauri/AGENTS.md`。
 
@@ -93,7 +97,7 @@ cd src/tauri && cargo crap --lcov lcov.info
 
 1. 优先拆函数：识别可独立的分支块（如 `handle_rpc` 的各 method 分支），提取为独立函数并各自可测。
 2. 拆完后跑 `make lint` 确认零告警，再跑 `make score` 确认分数下降。
-3. 触达协议/工具行为时，按 [src/tauri/AGENTS.md](../../../src/tauri/AGENTS.md) 的门禁与冒烟测试流程验证（`node cmd/client/test.mjs`）。
+3. 触达协议/工具行为时，按 [src/tauri/AGENTS.md](../../../src/tauri/AGENTS.md) 的门禁与冒烟测试流程验证（`node cmd/client/test-streamable.mjs`）。
 
 ## 参考
 

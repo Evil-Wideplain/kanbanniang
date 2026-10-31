@@ -26,7 +26,7 @@ description: 提交信息（commit message）规范——基于 Conventional Com
 | type | 含义 | 示例 |
 |------|------|------|
 | `feat` | 新增功能 | `feat(frontend): 支持模型热切换失败自动回滚` |
-| `fix` | 修复缺陷 | `fix(mcp): 修正 SSE 断连后 oneshot 未释放` |
+| `fix` | 修复缺陷 | `fix(mcp): 修正查询超时后 oneshot 未释放` |
 | `docs` | 仅文档 | `docs: 补充模型接入说明` |
 | `style` | 格式（不影响逻辑） | `style(tauri): 统一 rustfmt 缩进` |
 | `refactor` | 重构（不改行为） | `refactor(mcp): 拆分 handle_rpc 各 method 分支` |
@@ -44,7 +44,7 @@ description: 提交信息（commit message）规范——基于 Conventional Com
 
 ## subject / body / footer 规则
 
-- **subject**：中文祈使句，描述「做什么」；≤ 50 字符；结尾不加句号；专有名词（MCP / SSE / Live2D / JSON-RPC 等）保留英文。
+- **subject**：中文祈使句，描述「做什么」；≤ 50 字符；结尾不加句号；专有名词（MCP / Live2D / JSON-RPC 等）保留英文。
 - **body**：解释**为什么**（动机、取舍、影响），而非复述 diff；多个要点用 `- ` 列表；与首行空一行。
 - **footer**：破坏性变更有两种写法——`type(scope)!:` 加 `!`，并在 footer 写 `BREAKING CHANGE: <影响与迁移说明>`；关联 issue 写 `Refs #12` / `Closes #12`。
 

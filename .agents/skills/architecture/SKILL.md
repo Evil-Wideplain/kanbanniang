@@ -10,7 +10,7 @@ description: 看板娘项目架构知识——DDD 分层（领域/应用/基础�
 ## 核心链路
 
 ```
-Agent（Claude Desktop 等） ──SSE / JSON-RPC──▶ Rust: axum MCP 服务（src/tauri）
+Agent（Claude Desktop 等） ──Streamable HTTP / JSON-RPC──▶ Rust: axum MCP 服务（src/tauri）
                                                   │  Tauri 事件 mascot:action
                                                   ▼
                                         WebView 前端（src/frontend）
