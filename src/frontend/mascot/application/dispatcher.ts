@@ -23,7 +23,7 @@ export interface CommandCtx {
   setModel(id: string): Promise<SetModelOutcome>;
   /** 当前档案 id。 */
   currentModelId(): string;
-  /** 平滑移动主窗口到工作区归一化坐标（Tauri 命令 move_window，由 main.ts 注入；非 Tauri 环境缺失）。 */
+  /** 平滑移动主窗口到工作区归一化坐标（前端窗口 API 滑行，由 main.ts 注入；非 Tauri 环境缺失）。 */
   moveWindow?(x: number, y: number): Promise<WindowMoveOutcome>;
 }
 

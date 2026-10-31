@@ -123,8 +123,8 @@ export type SetModelOutcome =
   | { ok: false; error: string; current?: string; available?: string[] };
 
 /**
- * 窗口平滑移动结果（Tauri 命令 move_window 返回，
- * 与 src/tauri/src/commands.rs 的 WindowMoveOutcome 成对镜像，camelCase）。
+ * 窗口平滑移动结果（前端 `shared/ipc/window.ts::moveWindow` 返回，
+ * 由 `shared/domain/window-move.ts::readOutcome` 成型；Rust 侧已无对应命令）。
  */
 export interface WindowMoveOutcome {
   /** 最终生效的归一化坐标（工作区内，已截断到 [0,1]）。 */

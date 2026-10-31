@@ -33,12 +33,12 @@ pub fn run() {
         .register_uri_scheme_protocol(model_store::ASSET_SCHEME, |ctx, request| {
             model_store::respond(ctx.app_handle(), &request)
         })
-        // 设置相关命令：读写持久化设置、按需重启 MCP 服务与热切换模型；另含窗口平滑移动。
+        // 设置相关命令：读写持久化设置、按需重启 MCP 服务与热切换模型；
+        // 另含导入模型、鼠标穿透与调试调用入口。
         .invoke_handler(tauri::generate_handler![
             commands::get_settings,
             commands::get_runtime_status,
             commands::save_settings,
-            commands::move_window,
             commands::list_imported_models,
             commands::import_models,
             commands::remember_model,
@@ -123,8 +123,6 @@ pub fn run() {
             };
             app.manage(mcp::ServiceManager::new(server));
             app.manage(settings);
-            // 窗口滑动代次守卫：并发移动请求的抢占防护（move_window 命令注入使用）。
-            app.manage(commands::WindowGlideGuard::default());
 
             Ok(())
         })
