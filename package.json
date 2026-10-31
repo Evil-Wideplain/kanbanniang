@@ -4,6 +4,18 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Tauri + Live2D 桌面看板娘：内置 MCP 服务，并作为 DSH 插件供 Agent 通过 MCP 工具操作动作/表情/说话/移动",
+  "license": "MIT",
+  "author": "KanbanNiang contributors",
+  "keywords": [
+    "tauri",
+    "live2d",
+    "mcp",
+    "model-context-protocol",
+    "dsh-plugin",
+    "deepseek-harness",
+    "desktop-pet",
+    "kanbanniang"
+  ],
   "main": "lib/host.js",
   "exports": {
     ".": "./lib/host.js",
@@ -16,6 +28,7 @@
     "README.md"
   ],
   "engines": {
+    "node": ">=18",
     "dsh": "^0.2.0-rc.1"
   },
   "dsh": {

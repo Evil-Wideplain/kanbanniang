@@ -9,8 +9,26 @@ design/*
 # 本地模型文件（体积大、含许可，勿提交；目录整体忽略，models/README.md 仍跟踪）
 /models/*/
 
+# 本地临时目录（实验、抓取、工具中间产物，不入库）
+.tmp/
+
+# 本地环境变量与凭据（示例文件仍可跟踪）
+.env
+.env.*
+!.env.example
+*.local
+
+# 调试符号
+*.pdb
+
 # 系统/编辑器
 .DS_Store
 *.log
 .idea/
 .vscode/
+
+# 本机工具链适配（含绝对路径的 GNU 链接器 workaround，按机器不同，勿入库）
+/.cargo/config.toml
+
+# 本地开发笔记（含本机路径，不入库）
+.workbuddy/

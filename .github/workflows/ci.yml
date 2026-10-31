@@ -1,0 +1,92 @@
+# GitHub Actions CI：在 windows-latest 上跑仓库门禁（对应 Makefile 的 check / unit / lint）。
+#
+# 为什么不跑 `tauri build`：打包耗时长、还需要签名等与代码质量无关的条件；
+# 这里只验证「能编译 + 能过测试 + 无 clippy 警告 + 格式正确」，正式安装包在本地 `make build` 产出。
+#
+# 关键点：Tauri 的 build.rs 在编译期会检查 frontendDist（../../dist）是否存在，
+# 所以 Rust 任务必须先 `npm ci && npm run build` 生成 dist/，再跑 cargo 检查。
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  pull_request:
+
+# 同一分支连续推送时取消上一轮，节省 CI 额度
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# 工作流只读仓库：不配置任何 secrets，也不回写仓库
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: 前端门禁（类型检查 + 构建 + 单测）
+    runs-on: windows-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: 安装依赖（npm ci）
+        run: npm ci
+
+      # = tsc --noEmit + vite build；prebuild 会先跑 scripts/gen-models.mjs
+      - name: 类型检查 + 构建（make check）
+        run: npm run build
+
+      - name: 前端单元测试（make unit 前半）
+        run: npm run test
+
+      - name: 插件宿主半侧单元测试（make unit 后半）
+        run: npm run test:plugin
+
+  rust:
+    name: Rust 门禁（fmt + clippy）
+    runs-on: windows-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: 安装 Rust（stable + clippy + rustfmt）
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      # 缓存 cargo registry 与 target/；workspace 在 src/tauri（target/ 已按 .cargo/config.toml 落在仓库根）
+      - name: 缓存 Cargo 依赖与构建产物
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src/tauri
+
+      # Tauri 编译期需要 dist/ 存在，先做前端构建
+      - name: 安装依赖（npm ci）
+        run: npm ci
+
+      - name: 生成前端产物（npm run build）
+        run: npm run build
+
+      - name: 格式校验（cargo fmt --check）
+        working-directory: src/tauri
+        run: cargo fmt --check
+
+      - name: 严格 lint（cargo clippy --all-targets -- -D warnings）
+        working-directory: src/tauri
+        run: cargo clippy --all-targets -- -D warnings

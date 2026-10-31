@@ -1,7 +1,7 @@
 ---
 title: 看板娘 — Agent Guide
 created: 2026-10-17
-updated: 2026-10-29
+updated: 2026-10-31
 type: concept
 tags: [project, tauri, live2d, mcp, rust, typescript, ai, dsh-plugin]
 description: Tauri + Live2D 桌面看板娘的 Agent 开发入口：常用命令、项目结构、核心链路、硬性规则与提交前验证；含 DSH 插件装配（Streamable HTTP + 宿主插件）；规范细则见内置 skill。
@@ -48,6 +48,9 @@ sources: [.]
 | `src/mcp/tools.json` | MCP 工具契约单一来源（Rust 与 TS 同源加载） |
 | `cmd/` | MCP 冒烟测试脚本（`client/test-streamable.mjs`）与动作/表情命名脚本（`client/preview.mjs`） |
 | `models/` | Live2D 模型资源（gitignore，不入库；见 `models/README.md`） |
+| `docs/` | 补充文档：`market-distribution.md`（DSH 插件市场分发可行性验证、阻塞项与上架前启用清单） |
+| `.github/workflows/ci.yml` | GitHub Actions：windows-latest 跑前端 check/unit + 插件单测 + Rust fmt/clippy（不跑 `tauri build`） |
+| `LICENSE` / `.gitattributes` / `.gitignore` | MIT 许可证、行尾/二进制属性、忽略规则（`.cargo/config.toml` 与 `.workbuddy/` 为本机专用，已忽略不入库） |
 
 技术栈：Tauri 2（Windows WebView2）；Rust edition 2021 / MSRV 1.77 + axum；TypeScript（strict）+ Vite，无框架；pixi.js v6 + pixi-live2d-display（Live2D）。协议：MCP over Streamable HTTP（`POST 127.0.0.1:7432/mcp`，**唯一传输**；旧版 HTTP+SSE 的 `/mcp/sse` 已下线），JSON-RPC 2.0；端口与启用状态可在设置页配置（关闭 MCP 后看板娘仍独立运行）。DSH 插件半侧复用同一端点，DSH 侧工具名 `mcp__kanbanniang__<tool>`。
 
@@ -91,7 +94,7 @@ DSH 启动 → src/plugin 宿主插件（读 settings.json 端口 → provide ma
 4. 提交前可用 `make verify` 一次跑齐前端 + 插件 + Rust 门禁
 5. 协议/工具/动作改动：启动应用后用 `node cmd/client/test-streamable.mjs` 冒烟测试，并人工确认看板娘有响应
 6. DSH 装配改动：用非 desktop profile（如复制 `web` 模板）跑 `dsh --profile <test> --dump-config` 验证层叠，再用 `dsh --profile <test> --json "<提示词>"` 做端到端工具调用
-7. 不提交 `dist/`、`lib/`、`target/`、`node_modules/`、`models/*/`；不提交密钥/凭据
+7. 不提交 `dist/`、`lib/`、`target/`、`node_modules/`、`models/*/`、`.cargo/config.toml`、`.workbuddy/`；不提交密钥/凭据
 8. 生成 commit msg：加载并遵循 skill `commit`（Conventional Commits，中文正文）
 9. 未经用户明确要求，不要执行 git commit / push
 

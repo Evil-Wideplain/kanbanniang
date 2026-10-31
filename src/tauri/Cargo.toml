@@ -2,7 +2,8 @@
 name = "kanbanniang"
 version = "0.1.0"
 description = "Tauri + Live2D 桌面看板娘，内置 MCP 服务"
-authors = ["you"]
+authors = ["KanbanNiang contributors"]
+license = "MIT"
 edition = "2021"
 rust-version = "1.77"
 

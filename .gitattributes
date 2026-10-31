@@ -1,0 +1,47 @@
+# ---- 行尾策略 ----
+# 文本文件一律以 LF 入库，检出也用 LF：Windows 协作者不会把 CRLF 带进 diff。
+# 注意：本文件只影响之后的操作；已入库文件（当前全部为 LF）无需重新规范化。
+* text=auto eol=lf
+
+# ---- 明确按文本处理 ----
+.gitattributes text eol=lf
+.gitignore text eol=lf
+Makefile text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.rs text eol=lf
+*.toml text eol=lf
+*.sh text eol=lf
+LICENSE text eol=lf
+
+# Windows 脚本按 CRLF 更稳妥（Git Bash / cmd 外的工具链）
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# ---- 二进制资源：不做行尾转换、不参与 diff/merge ----
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ico binary
+*.zip binary
+*.exe binary
+*.dll binary
+*.pdb binary
+*.moc3 binary
+
+# ---- 生成物 / 第三方产物：GitHub 折叠大 diff、不计入语言统计 ----
+package-lock.json linguist-generated=true
+src/tauri/Cargo.lock linguist-generated=true
+src/tauri/gen/** linguist-generated=true
+src/frontend/mascot/render/live2d/live2dcubismcore.min.js linguist-vendored=true linguist-generated=true
