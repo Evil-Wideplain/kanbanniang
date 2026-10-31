@@ -14,7 +14,7 @@ use log::warn;
 use serde::Serialize;
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Listener};
-use tokio::sync::{broadcast, oneshot};
+use tokio::sync::oneshot;
 
 /// Tauri 事件通道名契约（与前端 `shared/domain/types.ts` 的 `CHANNELS` 成对维护）。
 pub mod channels {
@@ -51,14 +51,12 @@ pub struct FrontendResult {
     pub error: Option<String>,
 }
 
-/// 跨线程共享的应用状态：持有 AppHandle（用于发射事件）、SSE 会话表、
-/// 以及查询型工具等待前端回传结果的 oneshot 通道。
+/// 跨线程共享的应用状态：持有 AppHandle（用于发射事件）与
+/// 查询型工具等待前端回传结果的 oneshot 通道。
 /// 线程安全由内部 Mutex 保证；表结构一律经访问器方法读写。
 pub struct AppStateInner {
     /// Tauri 应用句柄：向 WebView 发射 `mascot:action` 事件。
     app: AppHandle,
-    /// SSE 会话表：会话 id → 广播发送端（消息经 SSE 流回传）。
-    sessions: Mutex<HashMap<String, broadcast::Sender<String>>>,
     /// 待回传结果表：指令 id → oneshot 发送端（查询型工具用）。
     pending: Mutex<HashMap<String, oneshot::Sender<Value>>>,
 }
@@ -68,19 +66,13 @@ impl AppStateInner {
     pub fn new(app: AppHandle) -> Self {
         Self {
             app,
-            sessions: Mutex::new(HashMap::new()),
             pending: Mutex::new(HashMap::new()),
         }
     }
 
-    /// 取会话表（SSE 会话 id → 广播发送端）。
-    /// 锁中毒（持锁线程曾 panic）时取回内部数据继续服务：该表只是会话索引，
+    /// 取待回传结果表（指令 id → oneshot 发送端）。
+    /// 锁中毒（持锁线程曾 panic）时取回内部数据继续服务：该表只是指令索引，
     /// 不存在会被中断破坏的结构性不变量，自愈优于让后续请求级联 panic。
-    pub fn sessions(&self) -> MutexGuard<'_, HashMap<String, broadcast::Sender<String>>> {
-        self.sessions.lock().unwrap_or_else(PoisonError::into_inner)
-    }
-
-    /// 取待回传结果表（指令 id → oneshot 发送端）。中毒自愈策略同 `sessions()`。
     fn pending(&self) -> MutexGuard<'_, HashMap<String, oneshot::Sender<Value>>> {
         self.pending.lock().unwrap_or_else(PoisonError::into_inner)
     }

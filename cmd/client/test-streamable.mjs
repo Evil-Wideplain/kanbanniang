@@ -4,7 +4,7 @@
  *
  * 覆盖 DSH 等新一代 MCP 客户端的接入路径：协议探测 → initialize（拿 Mcp-Session-Id）
  * → initialized 通知（202）→ tools/list → tools/call，并顺带验证 /health 与
- * GET /mcp 的 405 约定。旧版 SSE 传输的冒烟测试见 cmd/client/test.mjs。
+ * GET /mcp 的 405 约定。旧版 SSE 传输已下线，本脚本是唯一的传输级冒烟测试。
  *
  * 用法：先启动应用（make run 或 npm run tauri:dev），再执行
  *   node cmd/client/test-streamable.mjs

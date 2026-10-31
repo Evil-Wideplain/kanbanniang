@@ -7,13 +7,12 @@ use std::future::Future;
 use std::net::SocketAddr;
 
 use anyhow::Context;
-use axum::routing::{get, post};
+use axum::routing::get;
 use axum::Router;
 use log::{error, info};
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 
-use super::sse::{post_handler, sse_handler};
 use super::streamable;
 use super::AppState;
 
@@ -26,8 +25,8 @@ pub struct ServerHandle {
 impl ServerHandle {
     /// 停止服务：发关闭信号并立即终结任务，释放监听端口。
     ///
-    /// 不等待连接排空：SSE 是长连接，可能永不自然结束，阻塞等待会卡住端口切换；
-    /// 且新端口已先行绑定，旧服务是否排空不影响功能。
+    /// 不等待连接排空：客户端可能挂着未结束的请求，阻塞等待会卡住端口切换；
+    /// 且新端口已先行绑定（先建后销），旧服务是否排空不影响功能。
     fn stop(self) {
         let _ = self.shutdown.send(());
         self.task.abort();
@@ -65,10 +64,7 @@ where
     F: Future<Output = ()> + Send + 'static,
 {
     let app = Router::new()
-        // 旧版 SSE 传输（已废弃，仅兼容）：GET 建流 + POST 投递消息。
-        .route("/mcp/sse", get(sse_handler))
-        .route("/mcp/messages", post(post_handler))
-        // Streamable HTTP 传输（主路径）：单端点承载 JSON-RPC（DSH 的官方 MCP 客户端使用）。
+        // Streamable HTTP 传输（唯一传输）：单端点承载 JSON-RPC（DSH 的官方 MCP 客户端使用）。
         .route(
             "/mcp",
             get(streamable::get_handler)
@@ -81,8 +77,7 @@ where
         .with_state(state);
 
     info!(
-        "[mcp] MCP 服务已启动: Streamable HTTP http://{}/mcp（主）· 旧版 SSE http://{}/mcp/sse（兼容）",
-        listener.local_addr()?,
+        "[mcp] MCP 服务已启动: Streamable HTTP http://{}/mcp",
         listener.local_addr()?
     );
     axum::serve(listener, app)

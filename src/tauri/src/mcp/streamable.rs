@@ -1,6 +1,6 @@
-//! MCP Streamable HTTP 传输（旧版协议 2024-11-05 的无状态实现）。
+//! MCP Streamable HTTP 传输（无状态实现，MCP `2025-03-26` 起）。
 //!
-//! 与 `sse` 模块并列：同一个监听端口同时提供两种传输，供不同 MCP 客户端选择。
+//! 本应用只提供这一种传输：旧版 HTTP+SSE（`2024-11-05`）已下线，不再有 `/mcp/sse`。
 //! - `POST /mcp`：承载 JSON-RPC 消息。请求同步返回 `application/json` 响应；
 //!   通知（无 id）返回 202；`initialize` 响应携带 `Mcp-Session-Id`。
 //! - `GET /mcp`：协议中的服务端主动消息通道；本应用不需要服务端推送，
@@ -29,7 +29,7 @@ pub(super) async fn health_handler() -> Response {
         "ok": true,
         "service": "kanbanniang",
         "version": env!("CARGO_PKG_VERSION"),
-        "transport": ["sse", "streamable-http"],
+        "transport": ["streamable-http"],
     });
     json_response(StatusCode::OK, body.to_string(), None)
 }

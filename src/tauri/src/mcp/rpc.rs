@@ -10,7 +10,7 @@ use log::{info, warn};
 
 use super::{tools, AppState};
 
-/// 解析 JSON-RPC 请求，返回需要经 SSE 回传的响应字符串（通知类返回 None）。
+/// 解析 JSON-RPC 请求，返回需要回给客户端的响应字符串（通知类返回 None）。
 pub(super) async fn handle_rpc(state: AppState, req: Value) -> Option<String> {
     let method = req.get("method").and_then(Value::as_str)?;
     let id = req.get("id").cloned();
@@ -49,9 +49,11 @@ fn rpc_result(method: &str, req: &Value) -> Option<Value> {
 
 /// 本服务支持的 MCP 协议版本（新的在前）。
 ///
-/// 两条传输的版本诉求不同，因此 `initialize` 按客户端请求回显，而不是硬编码单一版本：
-/// - `2024-11-05`：旧版 HTTP+SSE 传输（`/mcp/sse`）所属版本；
-/// - `2025-03-26`：引入 Streamable HTTP（`/mcp`）的版本；
+/// `initialize` 按客户端请求回显，而不是硬编码单一版本：客户端只接受自己声明过的版本，
+/// 回别的版本会被它判为不兼容。
+/// - `2024-11-05`：老客户端仍可能声明该版本（其 initialize / tools 语义与新版一致，
+///   故仍受支持；对应的 HTTP+SSE 传输已下线，不影响本名单）；
+/// - `2025-03-26`：引入 Streamable HTTP 的版本；
 /// - `2025-06-18`：当前实现对齐的版本。
 ///
 /// 三者的 `initialize` / `tools/list` / `tools/call` 语义一致，本服务只用到这部分能力，

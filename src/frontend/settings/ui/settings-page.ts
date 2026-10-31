@@ -27,7 +27,6 @@ interface Controls {
   portInput: HTMLInputElement;
   modelOptions: HTMLElement;
   address: HTMLElement;
-  legacyAddress: HTMLElement;
   statusPill: HTMLElement;
   mcpEnabled: HTMLButtonElement;
   mcpDetail: HTMLElement;
@@ -52,7 +51,6 @@ export async function mountSettingsPage(): Promise<void> {
     portInput,
     modelOptions,
     address,
-    legacyAddress,
     mcpEnabled,
     opacity,
     opacityValue,
@@ -80,7 +78,7 @@ export async function mountSettingsPage(): Promise<void> {
   portInput.addEventListener("input", () => {
     const port = Number(portInput.value);
     if (validatePort(port) === null) {
-      renderAddresses(address, legacyAddress, port);
+      renderAddresses(address, port);
     }
   });
 
@@ -125,7 +123,6 @@ function collectControls(): Controls | null {
   const portInput = document.getElementById("mcp-port") as HTMLInputElement | null;
   const modelOptions = document.getElementById("model-options") as HTMLElement | null;
   const address = document.getElementById("mcp-address") as HTMLElement | null;
-  const legacyAddress = document.getElementById("mcp-legacy-address") as HTMLElement | null;
   const statusPill = document.getElementById("mcp-status") as HTMLElement | null;
   const mcpEnabled = document.getElementById("mcp-enabled") as HTMLButtonElement | null;
   const mcpDetail = document.getElementById("mcp-detail") as HTMLElement | null;
@@ -139,7 +136,6 @@ function collectControls(): Controls | null {
     !portInput ||
     !modelOptions ||
     !address ||
-    !legacyAddress ||
     !statusPill ||
     !mcpEnabled ||
     !mcpDetail ||
@@ -156,7 +152,6 @@ function collectControls(): Controls | null {
     portInput,
     modelOptions,
     address,
-    legacyAddress,
     statusPill,
     mcpEnabled,
     mcpDetail,
@@ -172,7 +167,7 @@ function collectControls(): Controls | null {
 /** 把设置回显到端口输入、模型芯片、开关、不透明度与地址展示。 */
 function applySelection(c: Controls, settings: MascotSettings): void {
   c.portInput.value = String(settings.mcpPort);
-  renderAddresses(c.address, c.legacyAddress, settings.mcpPort);
+  renderAddresses(c.address, settings.mcpPort);
   c.opacity.value = String(settings.opacity);
   c.opacityValue.textContent = `${settings.opacity}%`;
   setSwitch(c.mcpEnabled, settings.mcpEnabled);
@@ -312,7 +307,7 @@ async function refreshRuntimeStatus(c: Controls): Promise<void> {
   setPill(c.statusPill, mcpRunning ? "running" : "off", mcpRunning ? "运行中" : "未运行");
   // 未重启时地址以真实运行端口为准（配置端口仅作期望值展示）
   if (mcpRunning && validatePort(Number(c.portInput.value)) !== null) {
-    renderAddresses(c.address, c.legacyAddress, mcpPort);
+    renderAddresses(c.address, mcpPort);
   }
 }
 
@@ -326,10 +321,9 @@ function setPill(pill: HTMLElement, state: "running" | "busy" | "off", text: str
   }
 }
 
-/** 组装并写入 MCP 服务地址展示文本（主地址 + 旧版 SSE 兼容地址）。 */
-function renderAddresses(address: HTMLElement, legacyAddress: HTMLElement, port: number): void {
+/** 组装并写入 MCP 服务地址展示文本（Streamable HTTP 单端点）。 */
+function renderAddresses(address: HTMLElement, port: number): void {
   address.textContent = `127.0.0.1:${port}/mcp`;
-  legacyAddress.textContent = `127.0.0.1:${port}/mcp/sse`;
 }
 
 /** 提交表单：校验端口 → 保存全部设置（端口变化会重启服务）→ 刷新运行状态。 */
