@@ -6,6 +6,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![CI](https://github.com/Evil-Wideplain/kanbanniang/actions/workflows/ci.yml/badge.svg)](https://github.com/Evil-Wideplain/kanbanniang/actions/workflows/ci.yml)
+[![M8ven Score](https://m8ven.ai/badge/mcp/evil-wideplain-kanbanniang-1o71pd?v=91aba9fc3733f7a7e837500141c5777a)](https://m8ven.ai/mcp/evil-wideplain-kanbanniang-1o71pd?s=readme)
 ![Tauri 2](https://img.shields.io/badge/Tauri-2-lightgrey.svg)
 ![Node >=18](https://img.shields.io/badge/Node-%E2%89%A518-339933.svg)
 ![MCP Streamable HTTP](https://img.shields.io/badge/MCP-Streamable%20HTTP-purple.svg)
